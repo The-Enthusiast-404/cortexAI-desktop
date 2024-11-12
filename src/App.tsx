@@ -15,6 +15,7 @@ function App() {
   return (
     <main class="container">
       <h1>Welcome to Tauri + Solid</h1>
+      <h1 class="text-amber-700">Testing tailwind</h1>
 
       <div class="row">
         <a href="https://vitejs.dev" target="_blank">
