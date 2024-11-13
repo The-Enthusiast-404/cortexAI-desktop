@@ -23,6 +23,7 @@ export default function Chat(props: ChatProps) {
   const [isGenerating, setIsGenerating] = createSignal(false);
   const [currentResponse, setCurrentResponse] = createSignal("");
 
+  // Listen for streaming responses
   createEffect(() => {
     let unlisten: (() => void) | undefined;
 
@@ -44,6 +45,7 @@ export default function Chat(props: ChatProps) {
     }
 
     setupListener();
+
     onCleanup(() => {
       if (unlisten) {
         unlisten();
@@ -95,9 +97,9 @@ export default function Chat(props: ChatProps) {
   });
 
   return (
-    <div class="flex flex-col h-full bg-white rounded-lg shadow-sm">
+    <div class="h-full flex flex-col bg-white">
       {/* Chat header */}
-      <div class="p-4 border-b">
+      <div class="flex-none p-4 border-b hidden lg:block">
         <h2 class="font-semibold text-gray-800">Chat with {props.modelName}</h2>
       </div>
 
@@ -136,8 +138,8 @@ export default function Chat(props: ChatProps) {
       </div>
 
       {/* Input form */}
-      <form onSubmit={sendMessage} class="p-4 border-t">
-        <div class="flex space-x-4">
+      <div class="flex-none border-t p-4">
+        <form onSubmit={sendMessage} class="flex space-x-4">
           <input
             type="text"
             value={currentInput()}
@@ -155,8 +157,8 @@ export default function Chat(props: ChatProps) {
           >
             {isGenerating() ? "Generating..." : "Send"}
           </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
