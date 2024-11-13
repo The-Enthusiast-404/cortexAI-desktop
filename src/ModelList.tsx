@@ -8,9 +8,14 @@ interface OllamaModel {
   modified_at: string;
 }
 
-export default function ModelList() {
+interface ModelListProps {
+  onModelSelect: (modelName: string) => void; // Make this required
+}
+
+export default function ModelList(props: ModelListProps) {
   const [models, setModels] = createSignal<OllamaModel[]>([]);
   const [error, setError] = createSignal<string>("");
+  const [selectedModel, setSelectedModel] = createSignal<string>("");
 
   const fetchModels = async () => {
     try {
@@ -22,13 +27,17 @@ export default function ModelList() {
     }
   };
 
-  // Fetch models when component mounts
   createEffect(() => {
     fetchModels();
   });
 
+  const handleModelSelect = (modelName: string) => {
+    setSelectedModel(modelName);
+    props.onModelSelect(modelName);
+  };
+
   return (
-    <div class="p-4">
+    <div class="p-4 border rounded bg-white shadow-sm">
       <h2 class="text-xl font-bold mb-4">Available Models</h2>
 
       {error() && (
@@ -39,7 +48,14 @@ export default function ModelList() {
 
       <div class="grid gap-4">
         {models().map((model) => (
-          <div class="border rounded p-4 bg-white shadow-sm">
+          <button
+            class={`text-left w-full border rounded p-4 transition-colors hover:border-blue-500 ${
+              selectedModel() === model.name
+                ? "border-blue-500 ring-2 ring-blue-200 bg-blue-50"
+                : "bg-white"
+            }`}
+            onClick={() => handleModelSelect(model.name)}
+          >
             <h3 class="font-bold">{model.name}</h3>
             <div class="text-sm text-gray-600">
               <p>Size: {(model.size / 1024 / 1024 / 1024).toFixed(2)} GB</p>
@@ -48,7 +64,7 @@ export default function ModelList() {
                 {new Date(model.modified_at).toLocaleDateString()}
               </p>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>
