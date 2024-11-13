@@ -1,6 +1,7 @@
-import { createSignal, createEffect, For } from "solid-js";
+import { createSignal, createEffect, For, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import MessageContent from "./MessageContent";
 
 interface ChatMessage {
   role: string;
@@ -22,28 +23,32 @@ export default function Chat(props: ChatProps) {
   const [isGenerating, setIsGenerating] = createSignal(false);
   const [currentResponse, setCurrentResponse] = createSignal("");
 
-  // Listen for streaming responses
   createEffect(() => {
-    const unlisten = listen<ChatResponse>("chat-response", (event) => {
-      const response = event.payload;
+    let unlisten: (() => void) | undefined;
 
-      if (!response.done) {
-        // Accumulate the response
-        setCurrentResponse((prev) => prev + response.message.content);
-      } else {
-        // When done, add the complete message to the chat
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: currentResponse() },
-        ]);
-        setCurrentResponse("");
-        setIsGenerating(false);
+    async function setupListener() {
+      unlisten = await listen<ChatResponse>("chat-response", (event) => {
+        const response = event.payload;
+
+        if (!response.done) {
+          setCurrentResponse((prev) => prev + response.message.content);
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: currentResponse() },
+          ]);
+          setCurrentResponse("");
+          setIsGenerating(false);
+        }
+      });
+    }
+
+    setupListener();
+    onCleanup(() => {
+      if (unlisten) {
+        unlisten();
       }
     });
-
-    return () => {
-      unlisten.then((f) => f()); // Cleanup listener
-    };
   });
 
   const sendMessage = async (e: Event) => {
@@ -52,14 +57,12 @@ export default function Chat(props: ChatProps) {
 
     if (!userInput || isGenerating()) return;
 
-    // Add user message to chat
     const userMessage = { role: "user", content: userInput };
     setMessages((prev) => [...prev, userMessage]);
     setCurrentInput("");
     setIsGenerating(true);
 
     try {
-      // Send chat request to Rust backend
       await invoke("chat", {
         model: props.modelName,
         messages: [...messages(), userMessage],
@@ -77,9 +80,28 @@ export default function Chat(props: ChatProps) {
     }
   };
 
+  const messagesEndRef = () => {
+    const div = document.createElement("div");
+    div.id = "messages-end";
+    return div;
+  };
+
+  createEffect(() => {
+    // Scroll to bottom when messages change
+    const endDiv = document.getElementById("messages-end");
+    if (endDiv) {
+      endDiv.scrollIntoView({ behavior: "smooth" });
+    }
+  });
+
   return (
-    <div class="flex flex-col h-[600px] bg-white rounded-lg shadow">
-      {/* Chat messages */}
+    <div class="flex flex-col h-full bg-white rounded-lg shadow-sm">
+      {/* Chat header */}
+      <div class="p-4 border-b">
+        <h2 class="font-semibold text-gray-800">Chat with {props.modelName}</h2>
+      </div>
+
+      {/* Messages */}
       <div class="flex-1 overflow-y-auto p-4 space-y-4">
         <For each={messages()}>
           {(message) => (
@@ -89,13 +111,13 @@ export default function Chat(props: ChatProps) {
               }`}
             >
               <div
-                class={`max-w-[80%] rounded-lg p-3 ${
+                class={`max-w-[80%] rounded-lg p-4 ${
                   message.role === "user"
                     ? "bg-blue-500 text-white"
-                    : "bg-gray-100 text-gray-800"
+                    : "bg-gray-100"
                 }`}
               >
-                {message.content}
+                <MessageContent content={message.content} />
               </div>
             </div>
           )}
@@ -104,11 +126,13 @@ export default function Chat(props: ChatProps) {
         {/* Streaming response */}
         {currentResponse() && (
           <div class="flex justify-start">
-            <div class="max-w-[80%] rounded-lg p-3 bg-gray-100 text-gray-800">
-              {currentResponse()}
+            <div class="max-w-[80%] rounded-lg p-4 bg-gray-100">
+              <MessageContent content={currentResponse()} />
             </div>
           </div>
         )}
+        {/* Scroll anchor */}
+        {messagesEndRef()}
       </div>
 
       {/* Input form */}
@@ -119,13 +143,15 @@ export default function Chat(props: ChatProps) {
             value={currentInput()}
             onInput={(e) => setCurrentInput(e.currentTarget.value)}
             placeholder="Type your message..."
-            class="flex-1 p-2 border rounded"
+            class="flex-1 p-2 border rounded-md focus:outline-none focus:border-blue-500"
             disabled={isGenerating()}
           />
           <button
             type="submit"
             disabled={isGenerating()}
-            class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600
+                   focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                   disabled:opacity-50 disabled:hover:bg-blue-500"
           >
             {isGenerating() ? "Generating..." : "Send"}
           </button>
