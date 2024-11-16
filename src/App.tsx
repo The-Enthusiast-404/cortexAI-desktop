@@ -2,20 +2,31 @@ import { createSignal, Show } from "solid-js";
 import ModelList from "./ModelList";
 import ModelPuller from "./ModelPuller";
 import Chat from "./Chat";
+import ChatHistory from "./ChatHistory";
 import "./index.css";
 
 function App() {
   const [refreshTrigger, setRefreshTrigger] = createSignal(0);
   const [selectedModel, setSelectedModel] = createSignal<string | null>(null);
+  const [selectedChatId, setSelectedChatId] = createSignal<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = createSignal(true);
+  const [showModelList, setShowModelList] = createSignal(true);
 
   const handleModelPulled = () => {
     setRefreshTrigger((prev) => prev + 1);
   };
 
+  const handleChatSelect = (chatId: string, model: string) => {
+    setSelectedChatId(chatId);
+    setSelectedModel(model);
+    if (window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
+  };
+
   const handleModelSelect = (modelName: string) => {
     setSelectedModel(modelName);
-    // On mobile, close sidebar after selection
+    setSelectedChatId(null);
     if (window.innerWidth < 1024) {
       setIsSidebarOpen(false);
     }
@@ -23,16 +34,16 @@ function App() {
 
   return (
     <div class="h-screen flex overflow-hidden bg-gray-50">
-      {/* Fixed Sidebar */}
+      {/* Sidebar */}
       <div
         class={`fixed lg:relative z-30 w-80 flex flex-col h-full bg-white border-r shadow-sm
                 transition-transform duration-300
                 ${isSidebarOpen() ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
-        {/* Fixed Header */}
+        {/* Sidebar Header */}
         <div class="flex-none border-b p-4 bg-white">
           <div class="flex items-center justify-between mb-4">
-            <h1 class="text-xl font-bold">CortexAI</h1>
+            <h1 class="text-xl font-bold">CortexAI Desktop</h1>
             <button
               onClick={() => setIsSidebarOpen(false)}
               class="lg:hidden p-2 hover:bg-gray-100 rounded"
@@ -51,12 +62,48 @@ function App() {
               </svg>
             </button>
           </div>
-          <ModelPuller onModelPulled={handleModelPulled} />
+
+          {/* Tabs */}
+          <div class="flex space-x-2 mb-4">
+            <button
+              onClick={() => setShowModelList(true)}
+              class={`flex-1 py-2 px-4 rounded-md ${
+                showModelList()
+                  ? "bg-blue-100 text-blue-700"
+                  : "text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              Models
+            </button>
+            <button
+              onClick={() => setShowModelList(false)}
+              class={`flex-1 py-2 px-4 rounded-md ${
+                !showModelList()
+                  ? "bg-blue-100 text-blue-700"
+                  : "text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              Chats
+            </button>
+          </div>
+
+          {/* Show ModelPuller only in Models tab */}
+          {showModelList() && <ModelPuller onModelPulled={handleModelPulled} />}
         </div>
 
-        {/* Scrollable Model List */}
+        {/* Sidebar Content */}
         <div class="flex-1 overflow-y-auto">
-          <ModelList key={refreshTrigger()} onModelSelect={handleModelSelect} />
+          {showModelList() ? (
+            <ModelList
+              key={refreshTrigger()}
+              onModelSelect={handleModelSelect}
+            />
+          ) : (
+            <ChatHistory
+              onChatSelect={handleChatSelect}
+              selectedChatId={selectedChatId()}
+            />
+          )}
         </div>
       </div>
 
@@ -117,7 +164,7 @@ function App() {
                 </div>
               }
             >
-              <Chat modelName={selectedModel()!} />
+              <Chat modelName={selectedModel()!} chatId={selectedChatId()} />
             </Show>
           </div>
         </div>

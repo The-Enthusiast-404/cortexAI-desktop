@@ -1,12 +1,26 @@
-import { createSignal, createEffect, For, onCleanup } from "solid-js";
+import { createSignal, createEffect, For, onMount, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import MessageContent from "./MessageContent";
 import ChatSettings, { ModelParams } from "./ChatSettings";
+
+interface Chat {
+  id: string;
+  title: string;
+  model: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface ChatMessage {
   role: string;
   content: string;
+}
+
+interface ChatProps {
+  modelName: string;
+  chatId?: string | null;
+  onNewChat?: (chatId: string) => void;
 }
 
 interface ChatResponse {
@@ -14,8 +28,10 @@ interface ChatResponse {
   done: boolean;
 }
 
-interface ChatProps {
-  modelName: string;
+interface StreamResponse {
+  content: string;
+  done: boolean;
+  chat_id?: string;
 }
 
 export default function Chat(props: ChatProps) {
@@ -24,6 +40,8 @@ export default function Chat(props: ChatProps) {
   const [isGenerating, setIsGenerating] = createSignal(false);
   const [currentResponse, setCurrentResponse] = createSignal("");
   const [showSettings, setShowSettings] = createSignal(false);
+  const [error, setError] = createSignal<string>();
+
   const [modelParams, setModelParams] = createSignal<ModelParams>({
     temperature: 0.7,
     top_p: 0.9,
@@ -32,29 +50,52 @@ export default function Chat(props: ChatProps) {
     max_tokens: 2048,
   });
 
-  createEffect(() => {
-    let unlisten: (() => void) | undefined;
-
-    async function setupListener() {
-      unlisten = await listen<ChatResponse>("chat-response", (event) => {
-        const response = event.payload;
-
-        if (!response.done) {
-          setCurrentResponse((prev) => prev + response.message.content);
-        } else {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: currentResponse() },
-          ]);
-          setCurrentResponse("");
-          setIsGenerating(false);
-        }
-      });
+  // Load chat history when chatId changes
+  createEffect(async () => {
+    if (props.chatId) {
+      try {
+        const chatMessages = await invoke<ChatMessage[]>("get_chat_messages", {
+          chatId: props.chatId,
+        });
+        setMessages(chatMessages);
+        setError(undefined);
+        setCurrentResponse("");
+      } catch (e) {
+        setError(`Failed to load chat history: ${e}`);
+      }
+    } else {
+      setMessages([]);
+      setCurrentResponse("");
     }
+  });
 
-    setupListener();
+  // Set up event listeners
+  onMount(async () => {
+    const unlisteners: UnlistenFn[] = [];
+
+    // Listen for chat responses
+    unlisteners.push(
+      await listen<ChatResponse>("chat-response", (event) => {
+        if (!event.payload.done) {
+          setCurrentResponse((prev) => prev + event.payload.message.content);
+        }
+      }),
+    );
+
+    // Listen for chat completion
+    unlisteners.push(
+      await listen<StreamResponse>("chat-complete", (event) => {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: currentResponse() },
+        ]);
+        setCurrentResponse("");
+        setIsGenerating(false);
+      }),
+    );
+
     onCleanup(() => {
-      if (unlisten) unlisten();
+      unlisteners.forEach((unlisten) => unlisten());
     });
   });
 
@@ -64,26 +105,34 @@ export default function Chat(props: ChatProps) {
 
     if (!userInput || isGenerating()) return;
 
-    const userMessage = { role: "user", content: userInput };
-    setMessages((prev) => [...prev, userMessage]);
-    setCurrentInput("");
-    setIsGenerating(true);
-
     try {
+      let currentChatId = props.chatId;
+
+      // If no chat_id exists, create a new chat
+      if (!currentChatId) {
+        const chat = await invoke<Chat>("create_chat", {
+          title: userInput.slice(0, 50), // Use first 50 chars of message as title
+          model: props.modelName,
+        });
+        currentChatId = chat.id;
+        props.onNewChat?.(chat.id);
+      }
+
+      const userMessage = { role: "user", content: userInput };
+      setMessages((prev) => [...prev, userMessage]);
+      setCurrentInput("");
+      setIsGenerating(true);
+      setError(undefined);
+
       await invoke("chat", {
         model: props.modelName,
         messages: [...messages(), userMessage],
         params: modelParams(),
+        chatId: currentChatId,
       });
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Sorry, there was an error generating the response.",
-        },
-      ]);
+      setError(`Failed to send message: ${error}`);
       setIsGenerating(false);
     }
   };
@@ -119,14 +168,19 @@ export default function Chat(props: ChatProps) {
         </div>
       )}
 
+      {/* Error display */}
+      {error() && (
+        <div class="p-4 m-4 bg-red-50 text-red-700 rounded-md border border-red-200">
+          {error()}
+        </div>
+      )}
+
       {/* Messages */}
       <div class="flex-1 overflow-y-auto p-4 space-y-4">
         <For each={messages()}>
           {(message) => (
             <div
-              class={`flex ${
-                message.role === "user" ? "justify-end" : "justify-start"
-              }`}
+              class={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
                 class={`max-w-[80%] rounded-lg p-4 ${
