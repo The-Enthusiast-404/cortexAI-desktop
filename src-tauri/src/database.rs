@@ -59,31 +59,21 @@ impl Database {
         Ok(Database { conn })
     }
 
-    pub fn create_chat(&self, title: &str, model: &str) -> Result<Chat> {
-        let chat = Chat {
-            id: Uuid::new_v4().to_string(),
-            title: title.to_string(),
-            model: model.to_string(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
+    // Modified to take &mut self
+    pub fn delete_chat(&mut self, chat_id: &str) -> Result<()> {
+        // Delete messages first (due to foreign key constraint)
+        self.conn
+            .execute("DELETE FROM messages WHERE chat_id = ?1", [chat_id])?;
 
-        self.conn.execute(
-            "INSERT INTO chats (id, title, model, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            (
-                &chat.id,
-                &chat.title,
-                &chat.model,
-                &chat.created_at.to_rfc3339(),
-                &chat.updated_at.to_rfc3339(),
-            ),
-        )?;
+        // Delete the chat
+        self.conn
+            .execute("DELETE FROM chats WHERE id = ?1", [chat_id])?;
 
-        Ok(chat)
+        Ok(())
     }
 
-    pub fn add_message(&self, chat_id: &str, role: &str, content: &str) -> Result<Message> {
+    // Other methods should also be updated to &mut self if they modify the database
+    pub fn add_message(&mut self, chat_id: &str, role: &str, content: &str) -> Result<Message> {
         let message = Message {
             id: Uuid::new_v4().to_string(),
             chat_id: chat_id.to_string(),
@@ -113,6 +103,31 @@ impl Database {
         Ok(message)
     }
 
+    pub fn create_chat(&mut self, title: &str, model: &str) -> Result<Chat> {
+        let chat = Chat {
+            id: Uuid::new_v4().to_string(),
+            title: title.to_string(),
+            model: model.to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        self.conn.execute(
+            "INSERT INTO chats (id, title, model, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            (
+                &chat.id,
+                &chat.title,
+                &chat.model,
+                &chat.created_at.to_rfc3339(),
+                &chat.updated_at.to_rfc3339(),
+            ),
+        )?;
+
+        Ok(chat)
+    }
+
+    // Read-only methods can keep &self
     pub fn get_chats(&self) -> Result<Vec<Chat>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, title, model, created_at, updated_at
@@ -168,11 +183,5 @@ impl Database {
         }
 
         Ok(messages)
-    }
-
-    pub fn delete_chat(&self, chat_id: &str) -> Result<()> {
-        self.conn
-            .execute("DELETE FROM chats WHERE id = ?1", [chat_id])?;
-        Ok(())
     }
 }

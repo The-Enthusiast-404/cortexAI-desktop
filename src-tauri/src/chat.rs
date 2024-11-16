@@ -44,8 +44,8 @@ pub struct StreamResponse {
 
 #[tauri::command]
 pub async fn save_message(chat_id: String, content: String, role: String) -> Result<(), String> {
-    let db = DB.lock().unwrap();
-    let db = db.as_ref().ok_or("Database not initialized")?;
+    let mut db_guard = DB.lock().unwrap();
+    let db = db_guard.as_mut().ok_or("Database not initialized")?;
 
     db.add_message(&chat_id, &role, &content)
         .map(|_| ())
@@ -54,8 +54,8 @@ pub async fn save_message(chat_id: String, content: String, role: String) -> Res
 
 #[tauri::command]
 pub async fn get_chat_messages(chat_id: String) -> Result<Vec<ChatMessage>, String> {
-    let db = DB.lock().unwrap();
-    let db = db.as_ref().ok_or("Database not initialized")?;
+    let db_guard = DB.lock().unwrap();
+    let db = db_guard.as_ref().ok_or("Database not initialized")?;
 
     let messages = db
         .get_chat_messages(&chat_id)
@@ -92,8 +92,8 @@ pub async fn chat(
     if let Some(chat_id) = &chat_id {
         if let Some(last_message) = messages.last() {
             if last_message.role == "user" {
-                let db = DB.lock().unwrap();
-                let db = db.as_ref().ok_or("Database not initialized")?;
+                let mut db_guard = DB.lock().unwrap();
+                let db = db_guard.as_mut().ok_or("Database not initialized")?;
                 db.add_message(chat_id, &last_message.role, &last_message.content)
                     .map_err(|e| format!("Failed to save user message: {}", e))?;
             }
@@ -123,8 +123,8 @@ pub async fn chat(
                             .map_err(|e| format!("Failed to emit response: {}", e))?;
 
                         if chat_response.done && chat_id.is_some() {
-                            let db = DB.lock().unwrap();
-                            let db = db.as_ref().ok_or("Database not initialized")?;
+                            let mut db_guard = DB.lock().unwrap();
+                            let db = db_guard.as_mut().ok_or("Database not initialized")?;
                             db.add_message(
                                 chat_id.as_ref().unwrap(),
                                 "assistant",
@@ -156,8 +156,8 @@ pub async fn chat(
 
 #[tauri::command]
 pub async fn get_chats() -> Result<Vec<Chat>, String> {
-    let db = crate::DB.lock().unwrap();
-    let db = db.as_ref().ok_or("Database not initialized")?;
+    let db_guard = DB.lock().unwrap();
+    let db = db_guard.as_ref().ok_or("Database not initialized")?;
 
     db.get_chats()
         .map_err(|e| format!("Failed to get chats: {}", e))
@@ -165,8 +165,8 @@ pub async fn get_chats() -> Result<Vec<Chat>, String> {
 
 #[tauri::command]
 pub async fn create_chat(title: String, model: String) -> Result<Chat, String> {
-    let db = DB.lock().unwrap();
-    let db = db.as_ref().ok_or("Database not initialized")?;
+    let mut db_guard = DB.lock().unwrap();
+    let db = db_guard.as_mut().ok_or("Database not initialized")?;
 
     db.create_chat(&title, &model)
         .map_err(|e| format!("Failed to create chat: {}", e))
@@ -174,9 +174,20 @@ pub async fn create_chat(title: String, model: String) -> Result<Chat, String> {
 
 #[tauri::command]
 pub async fn delete_chat(chat_id: String) -> Result<(), String> {
-    let db = DB.lock().unwrap();
-    let db = db.as_ref().ok_or("Database not initialized")?;
+    println!("Delete chat command received for chat ID: {}", chat_id);
 
-    db.delete_chat(&chat_id)
-        .map_err(|e| format!("Failed to delete chat: {}", e))
+    let mut db_guard = DB.lock().unwrap();
+    let db = db_guard.as_mut().ok_or("Database not initialized")?;
+
+    match db.delete_chat(&chat_id) {
+        Ok(_) => {
+            println!("Successfully deleted chat {}", chat_id);
+            Ok(())
+        }
+        Err(e) => {
+            let error_msg = format!("Failed to delete chat: {}", e);
+            println!("Error: {}", error_msg);
+            Err(error_msg)
+        }
+    }
 }

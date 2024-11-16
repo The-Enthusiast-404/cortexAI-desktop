@@ -5,6 +5,14 @@ import Chat from "./Chat";
 import ChatHistory from "./ChatHistory";
 import "./index.css";
 
+interface Chat {
+  id: string;
+  title: string;
+  model: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export default function App() {
   const [refreshTrigger, setRefreshTrigger] = createSignal(0);
   const [selectedModel, setSelectedModel] = createSignal<string | null>(null);
@@ -17,8 +25,8 @@ export default function App() {
   };
 
   const handleChatSelect = (chatId: string, model: string) => {
-    setSelectedChatId(chatId);
     setSelectedModel(model);
+    setSelectedChatId(chatId);
     if (window.innerWidth < 1024) {
       setIsSidebarOpen(false);
     }
@@ -35,11 +43,18 @@ export default function App() {
   const handleNewChat = (chatId: string) => {
     setSelectedChatId(chatId);
     setShowModelList(false); // Switch to chats tab
+    if (window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
   };
 
   const handleDeleteChat = () => {
+    console.log("handleDeleteChat called");
+    console.log("Current selectedChatId:", selectedChatId());
+    console.log("Current selectedModel:", selectedModel());
     setSelectedChatId(null);
     setSelectedModel(null);
+    console.log("State reset - selectedChatId and selectedModel set to null");
   };
 
   return (

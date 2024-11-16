@@ -34,32 +34,24 @@ export default function ChatHistory(props: ChatHistoryProps) {
     }
   };
 
-  const deleteChat = async (chatId: string, e: Event) => {
+  const handleDelete = async (e: MouseEvent, chatId: string) => {
+    e.preventDefault();
     e.stopPropagation();
-    if (!confirm("Are you sure you want to delete this chat?")) return;
 
     try {
       await invoke("delete_chat", { chatId });
-      await fetchChats(); // Refresh the list
+
       if (props.selectedChatId === chatId) {
         props.onDeleteChat?.();
       }
-    } catch (e) {
-      setError(`Failed to delete chat: ${e}`);
+
+      await fetchChats();
+    } catch (err) {
+      console.error("Failed to delete chat:", err);
+      setError(`Failed to delete chat: ${err}`);
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  // Fetch chats on component mount
   createEffect(() => {
     fetchChats();
   });
@@ -103,7 +95,7 @@ export default function ChatHistory(props: ChatHistoryProps) {
                     </div>
                   </div>
                   <button
-                    onClick={(e) => deleteChat(chat.id, e)}
+                    onClick={(e) => handleDelete(e, chat.id)}
                     class="p-2 hover:bg-gray-200 rounded-full"
                     title="Delete chat"
                   >
@@ -128,4 +120,14 @@ export default function ChatHistory(props: ChatHistoryProps) {
       </Show>
     </div>
   );
+}
+
+function formatDate(dateStr: string) {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
