@@ -5,7 +5,7 @@ import Chat from "./Chat";
 import ChatHistory from "./ChatHistory";
 import "./index.css";
 
-function App() {
+export default function App() {
   const [refreshTrigger, setRefreshTrigger] = createSignal(0);
   const [selectedModel, setSelectedModel] = createSignal<string | null>(null);
   const [selectedChatId, setSelectedChatId] = createSignal<string | null>(null);
@@ -30,6 +30,16 @@ function App() {
     if (window.innerWidth < 1024) {
       setIsSidebarOpen(false);
     }
+  };
+
+  const handleNewChat = (chatId: string) => {
+    setSelectedChatId(chatId);
+    setShowModelList(false); // Switch to chats tab
+  };
+
+  const handleDeleteChat = () => {
+    setSelectedChatId(null);
+    setSelectedModel(null);
   };
 
   return (
@@ -97,11 +107,13 @@ function App() {
             <ModelList
               key={refreshTrigger()}
               onModelSelect={handleModelSelect}
+              selectedModel={selectedModel()}
             />
           ) : (
             <ChatHistory
               onChatSelect={handleChatSelect}
               selectedChatId={selectedChatId()}
+              onDeleteChat={handleDeleteChat}
             />
           )}
         </div>
@@ -164,7 +176,11 @@ function App() {
                 </div>
               }
             >
-              <Chat modelName={selectedModel()!} chatId={selectedChatId()} />
+              <Chat
+                modelName={selectedModel()!}
+                chatId={selectedChatId()}
+                onNewChat={handleNewChat}
+              />
             </Show>
           </div>
         </div>
@@ -180,5 +196,3 @@ function App() {
     </div>
   );
 }
-
-export default App;
