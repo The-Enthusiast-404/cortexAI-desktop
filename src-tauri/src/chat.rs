@@ -3,7 +3,11 @@ use crate::DB;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use tauri::Runtime;
 use tauri::{Emitter, Window};
+use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_fs::FsExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatMessage {
@@ -40,6 +44,30 @@ pub struct StreamResponse {
     pub content: String,
     pub done: bool,
     pub chat_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChatExport {
+    version: String,
+    chat: ChatExportData,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChatExportData {
+    id: String,
+    title: String,
+    model: String,
+    created_at: String,
+    updated_at: String,
+    messages: Vec<MessageExport>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MessageExport {
+    id: String,
+    role: String,
+    content: String,
+    created_at: String,
 }
 
 #[tauri::command]
@@ -188,6 +216,68 @@ pub async fn delete_chat(chat_id: String) -> Result<(), String> {
             let error_msg = format!("Failed to delete chat: {}", e);
             println!("Error: {}", error_msg);
             Err(error_msg)
+        }
+    }
+}
+// In src-tauri/src/chat.rs
+
+#[tauri::command]
+pub async fn export_chat(chatId: String) -> Result<String, String> {
+    println!("Exporting chat with ID: {}", chatId); // Debug log
+
+    // Get chat data from database
+    let db_guard = DB.lock().unwrap();
+    let db = db_guard.as_ref().ok_or("Database not initialized")?;
+
+    // Get chat details
+    let chats = db.get_chats().map_err(|e| {
+        println!("Error getting chats: {:?}", e); // Debug log
+        format!("Failed to get chats: {}", e)
+    })?;
+
+    let chat = chats.into_iter().find(|c| c.id == chatId).ok_or_else(|| {
+        println!("Chat not found with ID: {}", chatId); // Debug log
+        "Chat not found".to_string()
+    })?;
+
+    // Get messages
+    let messages = db.get_chat_messages(&chatId).map_err(|e| {
+        println!("Error getting messages: {:?}", e); // Debug log
+        format!("Failed to get messages: {}", e)
+    })?;
+
+    println!("Found {} messages for chat", messages.len()); // Debug log
+
+    // Create export data
+    let export_data = ChatExport {
+        version: "1.0".to_string(),
+        chat: ChatExportData {
+            id: chat.id.clone(),
+            title: chat.title.clone(),
+            model: chat.model,
+            created_at: chat.created_at.to_rfc3339(),
+            updated_at: chat.updated_at.to_rfc3339(),
+            messages: messages
+                .into_iter()
+                .map(|m| MessageExport {
+                    id: m.id,
+                    role: m.role,
+                    content: m.content,
+                    created_at: m.created_at.to_rfc3339(),
+                })
+                .collect(),
+        },
+    };
+
+    // Convert to JSON with pretty printing
+    match serde_json::to_string_pretty(&export_data) {
+        Ok(json) => {
+            println!("Successfully serialized chat data"); // Debug log
+            Ok(json)
+        }
+        Err(e) => {
+            println!("Error serializing chat data: {:?}", e); // Debug log
+            Err(format!("Failed to serialize chat: {}", e))
         }
     }
 }
