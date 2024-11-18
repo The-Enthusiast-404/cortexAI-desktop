@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};

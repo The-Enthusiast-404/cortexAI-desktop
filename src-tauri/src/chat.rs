@@ -3,11 +3,7 @@ use crate::DB;
 use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use tauri::Runtime;
 use tauri::{Emitter, Window};
-use tauri_plugin_dialog::DialogExt;
-use tauri_plugin_fs::FsExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatMessage {
