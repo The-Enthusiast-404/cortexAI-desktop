@@ -40,7 +40,6 @@ fn initialize_database(app: &AppHandle) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             initialize_database(&app.handle())?;
             Ok(())
@@ -52,9 +51,13 @@ pub fn run() {
             chat::get_chat_messages,
             chat::save_message,
             chat::get_chats,
-            chat::create_chat, // Add this new command
-            chat::delete_chat, // Add this new command
+            chat::create_chat,
+            chat::delete_chat,
+            chat::export_chat, // Added export_chat command
         ])
+        .plugin(tauri_plugin_dialog::init()) // Dialog plugin for file dialogs
+        .plugin(tauri_plugin_fs::init()) // File system plugin
+        .plugin(tauri_plugin_shell::init()) // Shell plugin
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
