@@ -76,6 +76,17 @@ export default function Chat(props: ChatProps) {
     max_tokens: 2048,
   });
 
+  let messagesEndRef: HTMLDivElement | undefined;
+  const scrollToBottom = () => {
+    messagesEndRef?.scrollIntoView({ behavior: "smooth" });
+  };
+  createEffect(() => {
+    // Trigger scroll when messages change or currentResponse changes
+    messages();
+    currentResponse();
+    scrollToBottom();
+  });
+
   createEffect(async () => {
     if (props.chatId) {
       try {
@@ -132,6 +143,7 @@ export default function Chat(props: ChatProps) {
     try {
       let currentChatId = props.chatId;
 
+      // Create a new chat if needed
       if (!currentChatId) {
         const chat = await invoke<Chat>("create_chat", {
           title: userInput.slice(0, 50),
@@ -141,16 +153,21 @@ export default function Chat(props: ChatProps) {
         props.onNewChat?.(chat.id);
       }
 
-      // Immediately update the messages with the user's input
+      // Create user message
       const userMessage = { role: "user", content: userInput };
-      setMessages((prev) => [...prev, userMessage]);
+
+      // Clear input and set generating state
       setCurrentInput("");
       setIsGenerating(true);
       setError(undefined);
 
+      // Update messages immediately with user's message
+      setMessages((prev) => [...prev, userMessage]);
+
+      // Invoke chat after updating UI
       await invoke("chat", {
         model: props.modelName,
-        messages: [...messages(), userMessage],
+        messages: [...messages(), userMessage], // Include the new message
         params: modelParams(),
         chatId: currentChatId,
       });
@@ -273,7 +290,8 @@ export default function Chat(props: ChatProps) {
       </Show>
 
       {/* Messages Container */}
-      <div class="flex-1 overflow-y-auto">
+      {/* Messages Container */}
+      <div class="flex-1 overflow-y-auto scroll-smooth no-scrollbar">
         <div class="max-w-3xl mx-auto px-4">
           <For each={messages()}>
             {(message) => (
@@ -293,7 +311,13 @@ export default function Chat(props: ChatProps) {
                     )}
                   </div>
                   <div class="flex-1 min-w-0">
-                    <div class="text-gray-900 dark:text-white">
+                    <div
+                      class={`prose dark:prose-invert max-w-none ${
+                        message.role === "user"
+                          ? "text-gray-900 dark:text-white"
+                          : "text-gray-900 dark:text-white"
+                      }`}
+                    >
                       <MessageContent content={message.content} />
                     </div>
                   </div>
@@ -309,7 +333,7 @@ export default function Chat(props: ChatProps) {
                   <Bot class="w-4 h-4 text-white" />
                 </div>
                 <div class="flex-1 min-w-0">
-                  <div class="text-gray-900 dark:text-white">
+                  <div class="prose dark:prose-invert max-w-none text-gray-900 dark:text-white">
                     <MessageContent content={currentResponse()} />
                   </div>
                 </div>
@@ -317,8 +341,8 @@ export default function Chat(props: ChatProps) {
             </div>
           </Show>
 
-          {/* Space for scroll */}
-          <div class="h-4" />
+          {/* Invisible element for scroll reference */}
+          <div ref={messagesEndRef} class="h-4" />
         </div>
       </div>
 
@@ -332,11 +356,11 @@ export default function Chat(props: ChatProps) {
               onInput={(e) => setCurrentInput(e.currentTarget.value)}
               placeholder="Type your message..."
               class="w-full pl-4 pr-12 py-3 rounded-xl border border-chat-border-light dark:border-chat-border-dark
-                       bg-chat-input-light dark:bg-chat-input-dark text-gray-900 dark:text-white
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
-                       disabled:bg-gray-50 dark:disabled:bg-gray-800
-                       placeholder-gray-400 dark:placeholder-gray-500
-                       transition-all"
+                     bg-chat-input-light dark:bg-chat-input-dark text-gray-900 dark:text-white
+                     focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
+                     disabled:bg-gray-50 dark:disabled:bg-gray-800
+                     placeholder-gray-400 dark:placeholder-gray-500
+                     transition-all"
               disabled={isGenerating()}
             />
             <div class="absolute right-2 flex items-center">
@@ -344,8 +368,8 @@ export default function Chat(props: ChatProps) {
                 type="submit"
                 disabled={isGenerating()}
                 class="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300
-                         disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-500
-                         transition-colors rounded-lg"
+                       disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-500
+                       transition-colors rounded-lg"
               >
                 <Show
                   when={!isGenerating()}
@@ -357,7 +381,7 @@ export default function Chat(props: ChatProps) {
             </div>
           </div>
 
-          {/* Optional typing indicator or status message */}
+          {/* Optional typing indicator */}
           <Show when={isGenerating()}>
             <div class="mt-2 text-sm text-gray-500 dark:text-gray-400">
               AI is generating response...
