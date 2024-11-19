@@ -9,16 +9,13 @@ export default function MessageContent(props: MessageContentProps) {
   const processInlineMarkdown = (text: string) => {
     // Process bold text
     text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-
     // Process italic text
     text = text.replace(/\*(.*?)\*/g, "<em>$1</em>");
-
     // Process inline code
     text = text.replace(
       /`([^`]+)`/g,
-      '<code class="bg-gray-100 text-red-500 px-1 py-0.5 rounded">$1</code>',
+      '<code class="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-1 py-0.5 rounded">$1</code>',
     );
-
     return text;
   };
 
@@ -39,7 +36,7 @@ export default function MessageContent(props: MessageContentProps) {
             5: "text-sm font-bold",
             6: "text-xs font-bold",
           };
-          return `<h${level} class="${sizes[level as keyof typeof sizes]}">${content}</h${level}>`;
+          return `<h${level} class="${sizes[level as keyof typeof sizes]} text-gray-900 dark:text-white">${content}</h${level}>`;
         }
         return line;
       })
@@ -69,16 +66,12 @@ export default function MessageContent(props: MessageContentProps) {
         });
         isCode = false;
       } else {
-        // Parse non-code content for lists and other formatting
         const textContent = blocks[i];
-
-        // Split into lines and analyze for lists
         const lines = textContent.split("\n");
         let currentList: string[] = [];
         let currentText: string[] = [];
 
         lines.forEach((line, index) => {
-          // Check for unordered list
           if (line.trim().match(/^[-*•]\s/)) {
             if (currentText.length) {
               parsedBlocks.push({
@@ -90,9 +83,7 @@ export default function MessageContent(props: MessageContentProps) {
               currentText = [];
             }
             currentList.push(line.trim());
-          }
-          // Check for ordered list
-          else if (line.trim().match(/^\d+\.\s/)) {
+          } else if (line.trim().match(/^\d+\.\s/)) {
             if (currentText.length) {
               parsedBlocks.push({
                 type: "text",
@@ -103,9 +94,7 @@ export default function MessageContent(props: MessageContentProps) {
               currentText = [];
             }
             currentList.push(line.trim());
-          }
-          // Regular text
-          else {
+          } else {
             if (currentList.length) {
               parsedBlocks.push({
                 type: "list",
@@ -116,7 +105,6 @@ export default function MessageContent(props: MessageContentProps) {
             currentText.push(line);
           }
 
-          // Handle the last line
           if (index === lines.length - 1 && currentText.length) {
             parsedBlocks.push({
               type: "text",
@@ -127,7 +115,6 @@ export default function MessageContent(props: MessageContentProps) {
           }
         });
 
-        // Push any remaining list
         if (currentList.length) {
           parsedBlocks.push({
             type: "list",
@@ -141,20 +128,21 @@ export default function MessageContent(props: MessageContentProps) {
   };
 
   return (
-    <div class="space-y-4">
+    <div class="space-y-4 text-gray-900 dark:text-white">
       <For each={parseContent(props.content)}>
         {(block) => {
           switch (block.type) {
             case "code":
               return (
                 <div class="relative group">
-                  <pre class="overflow-auto rounded-lg bg-gray-900 p-4 text-sm text-gray-100">
+                  <pre class="overflow-auto rounded-lg bg-gray-100 dark:bg-gray-800 p-4 text-sm text-gray-900 dark:text-white">
                     <code class={`language-${block.language}`}>
                       {block.content}
                     </code>
                   </pre>
                   <button
-                    class="absolute top-2 right-2 p-2 rounded-md bg-gray-800 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                    class="absolute top-2 right-2 p-2 rounded-md bg-gray-200 dark:bg-gray-700
+                           text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={() => navigator.clipboard.writeText(block.content)}
                   >
                     <svg
@@ -175,7 +163,7 @@ export default function MessageContent(props: MessageContentProps) {
                   <For each={block.content}>
                     {(item) => (
                       <li
-                        class="text-gray-800"
+                        class="text-gray-900 dark:text-white"
                         innerHTML={item.replace(/^[-*•]\s+/, "")}
                       />
                     )}
@@ -185,7 +173,7 @@ export default function MessageContent(props: MessageContentProps) {
             default:
               return (
                 <div
-                  class="whitespace-pre-wrap text-gray-800 space-y-2"
+                  class="whitespace-pre-wrap text-gray-900 dark:text-white"
                   innerHTML={block.content}
                 />
               );
