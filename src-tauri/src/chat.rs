@@ -29,6 +29,14 @@ pub struct ChatRequest {
     pub params: ModelParams,
 }
 
+// Add new struct for context management
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChatContext {
+    pub messages: Vec<ChatMessage>,
+    pub total_tokens: usize, // Track total tokens in conversation
+    pub max_tokens: usize,   // Maximum tokens allowed in context
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatResponse {
     pub message: ChatMessage,
@@ -66,6 +74,33 @@ pub struct MessageExport {
     created_at: String,
 }
 
+impl ChatContext {
+    pub fn new(max_tokens: usize) -> Self {
+        Self {
+            messages: Vec::new(),
+            total_tokens: 0,
+            max_tokens,
+        }
+    }
+
+    // Add messages while maintaining token limit
+    pub fn add_message(&mut self, message: ChatMessage) {
+        // TODO: Implement proper token counting
+        let estimated_tokens = message.content.split_whitespace().count();
+
+        // Add new message
+        self.messages.push(message);
+        self.total_tokens += estimated_tokens;
+
+        // Trim old messages if we exceed the limit
+        while self.total_tokens > self.max_tokens && self.messages.len() > 1 {
+            // Remove oldest message and update token count
+            let removed_tokens = self.messages[0].content.split_whitespace().count();
+            self.messages.remove(0);
+            self.total_tokens = self.total_tokens.saturating_sub(removed_tokens);
+        }
+    }
+}
 #[tauri::command]
 pub async fn save_message(chat_id: String, content: String, role: String) -> Result<(), String> {
     let mut db_guard = DB.lock().unwrap();
@@ -98,16 +133,44 @@ pub async fn get_chat_messages(chat_id: String) -> Result<Vec<ChatMessage>, Stri
 pub async fn chat(
     window: Window,
     model: String,
-    messages: Vec<ChatMessage>,
+    mut messages: Vec<ChatMessage>,
     params: ModelParams,
     chat_id: Option<String>,
 ) -> Result<(), String> {
     let client = Client::new();
     let url = "http://localhost:11434/api/chat";
 
+    // Get existing conversation history if chat_id exists
+    let mut context = if let Some(chat_id) = &chat_id {
+        let db_guard = DB.lock().unwrap();
+        let db = db_guard.as_ref().ok_or("Database not initialized")?;
+
+        // Get all previous messages for this chat
+        let history = db
+            .get_chat_messages(chat_id)
+            .map_err(|e| format!("Failed to get chat history: {}", e))?;
+
+        // Convert to ChatContext
+        let mut context = ChatContext::new(params.max_tokens as usize);
+        for msg in history {
+            context.add_message(ChatMessage {
+                role: msg.role,
+                content: msg.content,
+            });
+        }
+        context
+    } else {
+        ChatContext::new(params.max_tokens as usize)
+    };
+
+    // Add the new message to context
+    if let Some(new_message) = messages.last().cloned() {
+        context.add_message(new_message);
+    }
+
     let payload = ChatRequest {
         model,
-        messages: messages.clone(),
+        messages: context.messages.clone(), // Use full context
         stream: true,
         params,
     };
@@ -146,15 +209,21 @@ pub async fn chat(
                             .emit("chat-response", &chat_response)
                             .map_err(|e| format!("Failed to emit response: {}", e))?;
 
-                        if chat_response.done && chat_id.is_some() {
-                            let mut db_guard = DB.lock().unwrap();
-                            let db = db_guard.as_mut().ok_or("Database not initialized")?;
-                            db.add_message(
-                                chat_id.as_ref().unwrap(),
-                                "assistant",
-                                &current_response,
-                            )
-                            .map_err(|e| format!("Failed to save assistant response: {}", e))?;
+                        if chat_response.done {
+                            if let Some(chat_id) = &chat_id {
+                                let mut db_guard = DB.lock().unwrap();
+                                let db = db_guard.as_mut().ok_or("Database not initialized")?;
+                                db.add_message(chat_id, "assistant", &current_response)
+                                    .map_err(|e| {
+                                        format!("Failed to save assistant response: {}", e)
+                                    })?;
+                            }
+
+                            // Update context with assistant's response
+                            context.add_message(ChatMessage {
+                                role: "assistant".to_string(),
+                                content: current_response.clone(),
+                            });
 
                             // Emit completion using the Emitter trait
                             let stream_response = StreamResponse {
