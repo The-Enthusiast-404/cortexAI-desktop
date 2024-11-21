@@ -25,6 +25,7 @@ import {
   Bot,
   User,
 } from "lucide-solid";
+import ContextIndicator from "./ContextIndicator";
 
 interface Chat {
   id: string;
@@ -270,6 +271,7 @@ export default function Chat(props: ChatProps) {
           </div>
         </div>
       </div>
+      <ContextIndicator chatId={props.chatId} />
 
       {/* Settings Panel */}
       <Show when={showSettings()}>
