@@ -132,14 +132,17 @@ impl ChatContext {
 
         // Prune messages if we exceed the token limit
         while self.total_tokens > self.max_tokens && self.messages.len() > 1 {
-            // Find the first non-pinned message from the start
-            if let Some(idx) = self.messages.iter().position(|m| !m.is_pinned) {
+            // Find the last non-pinned message before the most recent message
+            if let Some(idx) = self.messages[..self.messages.len()-1]
+                .iter()
+                .rposition(|m| !m.is_pinned) 
+            {
                 let removed_message = self.messages.remove(idx);
                 let removed_tokens = Self::estimate_tokens(&removed_message.content);
                 self.total_tokens = self.total_tokens.saturating_sub(removed_tokens);
                 self.pruned_count += 1;
             } else {
-                // If all messages are pinned, we have to keep them all
+                // If all messages except the last one are pinned, we need to keep them
                 break;
             }
         }
