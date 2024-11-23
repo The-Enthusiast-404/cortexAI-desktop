@@ -1,7 +1,11 @@
 import { For } from "solid-js";
+import { Pin, PinOff } from "lucide-solid";
 
 interface MessageContentProps {
   content: string;
+  isPinned?: boolean;
+  onTogglePin?: () => void;
+  showPinControls?: boolean;
 }
 
 export default function MessageContent(props: MessageContentProps) {
@@ -10,7 +14,7 @@ export default function MessageContent(props: MessageContentProps) {
     // Process bold text
     text = text.replace(
       /\*\*(.*?)\*\*/g,
-      '<strong class="font-bold">$1</strong>',
+      '<strong class="font-bold">$1</strong>'
     );
 
     // Process italic text
@@ -19,7 +23,7 @@ export default function MessageContent(props: MessageContentProps) {
     // Process inline code
     text = text.replace(
       /`([^`]+)`/g,
-      '<code class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm font-mono">$1</code>',
+      '<code class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm font-mono">$1</code>'
     );
 
     return text;
@@ -42,7 +46,9 @@ export default function MessageContent(props: MessageContentProps) {
             5: "text-sm font-bold",
             6: "text-xs font-bold",
           };
-          return `<h${level} class="${sizes[level as keyof typeof sizes]} text-gray-900 dark:text-white my-2">${content}</h${level}>`;
+          return `<h${level} class="${
+            sizes[level as keyof typeof sizes]
+          } text-gray-900 dark:text-white my-2">${content}</h${level}>`;
         }
         return line;
       })
@@ -83,7 +89,7 @@ export default function MessageContent(props: MessageContentProps) {
               parsedBlocks.push({
                 type: "text",
                 content: processHeadings(
-                  processInlineMarkdown(currentText.join("\n")),
+                  processInlineMarkdown(currentText.join("\n"))
                 ),
               });
               currentText = [];
@@ -94,7 +100,7 @@ export default function MessageContent(props: MessageContentProps) {
               parsedBlocks.push({
                 type: "text",
                 content: processHeadings(
-                  processInlineMarkdown(currentText.join("\n")),
+                  processInlineMarkdown(currentText.join("\n"))
                 ),
               });
               currentText = [];
@@ -115,7 +121,7 @@ export default function MessageContent(props: MessageContentProps) {
             parsedBlocks.push({
               type: "text",
               content: processHeadings(
-                processInlineMarkdown(currentText.join("\n")),
+                processInlineMarkdown(currentText.join("\n"))
               ),
             });
           }
@@ -134,66 +140,87 @@ export default function MessageContent(props: MessageContentProps) {
   };
 
   return (
-    <div class="space-y-4 text-gray-900 dark:text-white">
-      <For each={parseContent(props.content)}>
-        {(block) => {
-          switch (block.type) {
-            case "code":
-              return (
-                <div class="relative group">
-                  <pre class="overflow-auto rounded-lg bg-gray-100 dark:bg-gray-800 p-4 text-sm font-mono">
-                    <code
-                      class={`language-${block.language} text-gray-900 dark:text-white`}
+    <div class="relative group">
+      {props.showPinControls && (
+        <button
+          onClick={() => props.onTogglePin?.()}
+          class="absolute right-2 top-2 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 opacity-0 group-hover:opacity-100 transition-opacity"
+          title={props.isPinned ? "Unpin message" : "Pin message"}
+        >
+          {props.isPinned ? (
+            <Pin class="w-4 h-4 text-blue-500" />
+          ) : (
+            <PinOff class="w-4 h-4 text-gray-500" />
+          )}
+        </button>
+      )}
+      <div
+        class={`prose dark:prose-invert max-w-none ${
+          props.isPinned ? "border-l-2 border-blue-500 pl-2" : ""
+        }`}
+      >
+        <For each={parseContent(props.content)}>
+          {(block) => {
+            switch (block.type) {
+              case "code":
+                return (
+                  <div class="relative group">
+                    <pre class="overflow-auto rounded-lg bg-gray-100 dark:bg-gray-800 p-4 text-sm font-mono">
+                      <code
+                        class={`language-${block.language} text-gray-900 dark:text-white`}
+                      >
+                        {block.content}
+                      </code>
+                    </pre>
+                    <button
+                      class="absolute top-2 right-2 p-2 rounded-md
+                             bg-gray-200 dark:bg-gray-700
+                             text-gray-600 dark:text-gray-300
+                             opacity-0 group-hover:opacity-100
+                             transition-opacity focus:outline-none
+                             focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
+                             hover:bg-gray-300 dark:hover:bg-gray-600"
+                      onClick={() =>
+                        navigator.clipboard.writeText(block.content)
+                      }
+                      title="Copy to clipboard"
                     >
-                      {block.content}
-                    </code>
-                  </pre>
-                  <button
-                    class="absolute top-2 right-2 p-2 rounded-md
-                           bg-gray-200 dark:bg-gray-700
-                           text-gray-600 dark:text-gray-300
-                           opacity-0 group-hover:opacity-100
-                           transition-opacity focus:outline-none
-                           focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
-                           hover:bg-gray-300 dark:hover:bg-gray-600"
-                    onClick={() => navigator.clipboard.writeText(block.content)}
-                    title="Copy to clipboard"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      class="h-4 w-4"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                      <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
-                    </svg>
-                  </button>
-                </div>
-              );
-            case "list":
-              return (
-                <ul class="space-y-1.5 list-disc list-inside text-gray-900 dark:text-white">
-                  <For each={block.content}>
-                    {(item) => (
-                      <li
-                        class="text-gray-900 dark:text-white"
-                        innerHTML={item.replace(/^[-*•]\s+/, "")}
-                      />
-                    )}
-                  </For>
-                </ul>
-              );
-            default:
-              return (
-                <div
-                  class="whitespace-pre-wrap text-gray-900 dark:text-white"
-                  innerHTML={block.content}
-                />
-              );
-          }
-        }}
-      </For>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-4 w-4"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                        <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                      </svg>
+                    </button>
+                  </div>
+                );
+              case "list":
+                return (
+                  <ul class="space-y-1.5 list-disc list-inside text-gray-900 dark:text-white">
+                    <For each={block.content}>
+                      {(item) => (
+                        <li
+                          class="text-gray-900 dark:text-white"
+                          innerHTML={item.replace(/^[-*•]\s+/, "")}
+                        />
+                      )}
+                    </For>
+                  </ul>
+                );
+              default:
+                return (
+                  <div
+                    class="whitespace-pre-wrap text-gray-900 dark:text-white"
+                    innerHTML={block.content}
+                  />
+                );
+            }
+          }}
+        </For>
+      </div>
     </div>
   );
 }

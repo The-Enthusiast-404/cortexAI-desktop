@@ -19,6 +19,7 @@ pub struct Message {
     pub role: String,
     pub content: String,
     pub created_at: DateTime<Utc>,
+    pub is_pinned: bool,
 }
 
 pub struct Database {
@@ -51,15 +52,30 @@ impl Database {
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 created_at TEXT NOT NULL,
+                is_pinned INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
             )",
             [],
         )?;
 
+        // Add is_pinned column to existing messages table if it doesn't exist
+        let columns: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='messages'",
+                [],
+                |row| row.get(0),
+            )?;
+        
+        if !columns.to_lowercase().contains("is_pinned") {
+            conn.execute(
+                "ALTER TABLE messages ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
+        }
+
         Ok(Database { conn })
     }
 
-    // Modified to take &mut self
     pub fn delete_chat(&mut self, chat_id: &str) -> Result<()> {
         // Delete messages first (due to foreign key constraint)
         self.conn
@@ -72,25 +88,26 @@ impl Database {
         Ok(())
     }
 
-    // Other methods should also be updated to &mut self if they modify the database
-    pub fn add_message(&mut self, chat_id: &str, role: &str, content: &str) -> Result<Message> {
+    pub fn add_message(&mut self, chat_id: &str, role: &str, content: &str, is_pinned: bool) -> Result<Message> {
         let message = Message {
             id: Uuid::new_v4().to_string(),
             chat_id: chat_id.to_string(),
             role: role.to_string(),
             content: content.to_string(),
             created_at: Utc::now(),
+            is_pinned,
         };
 
         self.conn.execute(
-            "INSERT INTO messages (id, chat_id, role, content, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO messages (id, chat_id, role, content, created_at, is_pinned)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             (
                 &message.id,
                 &message.chat_id,
                 &message.role,
                 &message.content,
                 &message.created_at.to_rfc3339(),
+                message.is_pinned as i32,
             ),
         )?;
 
@@ -101,6 +118,14 @@ impl Database {
         )?;
 
         Ok(message)
+    }
+
+    pub fn toggle_message_pin(&mut self, message_id: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE messages SET is_pinned = ((is_pinned | 1) - (is_pinned & 1)) WHERE id = ?",
+            [message_id],
+        )?;
+        Ok(())
     }
 
     pub fn create_chat(&mut self, title: &str, model: &str) -> Result<Chat> {
@@ -127,7 +152,6 @@ impl Database {
         Ok(chat)
     }
 
-    // Read-only methods can keep &self
     pub fn get_chats(&self) -> Result<Vec<Chat>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, title, model, created_at, updated_at
@@ -159,7 +183,7 @@ impl Database {
 
     pub fn get_chat_messages(&self, chat_id: &str) -> Result<Vec<Message>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, chat_id, role, content, created_at
+            "SELECT id, chat_id, role, content, created_at, is_pinned
              FROM messages
              WHERE chat_id = ?1
              ORDER BY created_at ASC",
@@ -174,6 +198,7 @@ impl Database {
                 created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?)
                     .unwrap()
                     .with_timezone(&Utc),
+                is_pinned: row.get::<_, i32>(5)? != 0,
             })
         })?;
 

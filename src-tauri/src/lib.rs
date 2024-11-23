@@ -49,11 +49,13 @@ pub fn run() {
             pull_model,
             chat::chat,
             chat::get_chat_messages,
-            chat::save_message,
             chat::get_chats,
             chat::create_chat,
             chat::delete_chat,
-            chat::export_chat, // Added export_chat command
+            chat::export_chat,
+            chat::get_context_stats,
+            chat::save_message,
+            chat::toggle_message_pin,
         ])
         .plugin(tauri_plugin_dialog::init()) // Dialog plugin for file dialogs
         .plugin(tauri_plugin_fs::init()) // File system plugin
