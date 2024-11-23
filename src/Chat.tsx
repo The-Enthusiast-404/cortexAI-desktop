@@ -11,7 +11,7 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import MessageContent from "./MessageContent";
 import ChatSettings, { ModelParams } from "./ChatSettings";
 import { writeFile } from "@tauri-apps/plugin-fs";
-import { save } from "@tauri-apps/plugin-dialog";
+import { save, open } from "@tauri-apps/plugin-dialog";
 import { desktopDir } from "@tauri-apps/api/path";
 import { Button } from "@kobalte/core";
 import {
@@ -19,6 +19,7 @@ import {
   Send,
   Settings,
   Download,
+  Upload,
   Loader,
   Moon,
   Sun,
@@ -224,41 +225,61 @@ export default function Chat(props: ChatProps) {
   };
 
   const handleExport = async () => {
-    if (!props.chatId || isExporting()) return;
+    if (!props.chatId) return;
 
     try {
-      setIsExporting(true);
-      setError(undefined);
-
-      const jsonData = await invoke<string>("export_chat", {
-        chatId: props.chatId,
-      });
-
-      const timestamp = new Date().toISOString().split("T")[0];
-      const suggestedName = `chat-export-${timestamp}.json`;
-      const defaultPath = await desktopDir();
-
+      const suggestedFilename = `chat-${props.chatId}-${
+        new Date().toISOString().split("T")[0]
+      }.json`;
       const filePath = await save({
-        defaultPath: `${defaultPath}${suggestedName}`,
         filters: [
           {
-            name: "JSON Files",
+            name: "Chat Export",
+            extensions: ["json"],
+          },
+        ],
+        defaultPath: suggestedFilename,
+      });
+
+      if (filePath) {
+        const exportData = await invoke<string>("export_chat", {
+          chatId: props.chatId,
+        });
+        const encoder = new TextEncoder();
+        const data = encoder.encode(exportData);
+        await writeFile(filePath, data);
+        // toast.success('Chat exported successfully');
+      }
+    } catch (error) {
+      console.error("Failed to export chat:", error);
+      // toast.error('Failed to export chat');
+    }
+  };
+
+  const handleImport = async () => {
+    try {
+      const selected = await open({
+        filters: [
+          {
+            name: "Chat Export",
             extensions: ["json"],
           },
         ],
       });
 
-      if (filePath) {
-        const encoder = new TextEncoder();
-        const binaryData = encoder.encode(jsonData);
-        await writeFile(filePath, binaryData);
+      if (selected) {
+        const newChatId = await invoke<string>("import_chat", {
+          filePath: selected as string,
+        });
+
+        // Navigate to the newly imported chat
+        if (props.onNewChat) {
+          props.onNewChat(newChatId);
+        }
       }
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      setError(`Failed to export chat: ${errorMessage}`);
-    } finally {
-      setIsExporting(false);
+      console.error("Failed to import chat:", error);
+      setError("Failed to import chat: " + error);
     }
   };
 
@@ -291,27 +312,30 @@ export default function Chat(props: ChatProps) {
                 <Sun class="w-5 h-5" />
               </Show>
             </Button.Root>
-            {props.chatId && (
-              <Button.Root
-                onClick={handleExport}
-                disabled={isExporting()}
-                class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors disabled:opacity-50"
-                title="Export Chat"
-              >
-                <Show
-                  when={!isExporting()}
-                  fallback={<Loader class="w-5 h-5 animate-spin" />}
+            <div class="flex items-center space-x-2 px-4">
+              <Show when={props.chatId}>
+                <Button.Root
+                  class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 text-gray-900 dark:text-white"
+                  onClick={handleExport}
                 >
-                  <Download class="w-5 h-5" />
-                </Show>
+                  <Download class="h-4 w-4 mr-2" />
+                  Export
+                </Button.Root>
+                <Button.Root
+                  class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 text-gray-900 dark:text-white"
+                  onClick={handleImport}
+                >
+                  <Upload class="h-4 w-4 mr-2" />
+                  Import
+                </Button.Root>
+              </Show>
+              <Button.Root
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+                onClick={() => setShowSettings(!showSettings())}
+              >
+                <Settings class="h-4 w-4" />
               </Button.Root>
-            )}
-            <Button.Root
-              onClick={() => setShowSettings(!showSettings())}
-              class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
-            >
-              <Settings class="w-5 h-5" />
-            </Button.Root>
+            </div>
           </div>
         </div>
       </div>

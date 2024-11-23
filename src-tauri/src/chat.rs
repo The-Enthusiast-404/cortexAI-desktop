@@ -85,10 +85,11 @@ pub struct ChatExportData {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MessageExport {
-    id: String,
-    role: String,
-    content: String,
-    created_at: String,
+    id: Option<String>,
+    pub role: String,
+    pub content: String,
+    pub created_at: Option<String>,
+    pub is_pinned: bool,
 }
 
 // Context Management Implementation
@@ -408,10 +409,11 @@ pub async fn export_chat(chat_id: String) -> Result<String, String> {
             messages: messages
                 .into_iter()
                 .map(|m| MessageExport {
-                    id: m.id,
+                    id: Some(m.id),
                     role: m.role,
                     content: m.content,
-                    created_at: m.created_at.to_rfc3339(),
+                    created_at: Some(m.created_at.to_rfc3339()),
+                    is_pinned: m.is_pinned,
                 })
                 .collect(),
         },
@@ -419,4 +421,31 @@ pub async fn export_chat(chat_id: String) -> Result<String, String> {
 
     serde_json::to_string_pretty(&export_data)
         .map_err(|e| format!("Failed to serialize chat: {}", e))
+}
+
+#[tauri::command]
+pub async fn import_chat(file_path: String) -> Result<String, String> {
+    let content = std::fs::read_to_string(&file_path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    
+    let chat_export: ChatExport = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse chat data: {}", e))?;
+    
+    let mut db_guard = DB.lock()
+        .map_err(|_| "Failed to lock database")?;
+    let db = db_guard
+        .as_mut()
+        .ok_or("Database not initialized")?;
+    
+    // Create new chat and get the ID from the database
+    let chat = db.create_chat(&chat_export.chat.title, &chat_export.chat.model)
+        .map_err(|e| format!("Failed to create chat: {}", e))?;
+    
+    // Import messages using the chat ID from the database
+    for msg in chat_export.chat.messages {
+        db.add_message(&chat.id, &msg.role, &msg.content, msg.is_pinned)
+            .map_err(|e| format!("Failed to create message: {}", e))?;
+    }
+    
+    Ok(chat.id)
 }

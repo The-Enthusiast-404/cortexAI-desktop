@@ -52,10 +52,11 @@ pub fn run() {
             chat::get_chats,
             chat::create_chat,
             chat::delete_chat,
-            chat::export_chat,
-            chat::get_context_stats,
             chat::save_message,
             chat::toggle_message_pin,
+            chat::get_context_stats,
+            chat::export_chat,
+            chat::import_chat,
         ])
         .plugin(tauri_plugin_dialog::init()) // Dialog plugin for file dialogs
         .plugin(tauri_plugin_fs::init()) // File system plugin
