@@ -10,8 +10,11 @@ use tokio::sync::Mutex as AsyncMutex;
 // Message Types and Structures
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatMessage {
+    pub id: Option<String>,
     pub role: String,
     pub content: String,
+    #[serde(default)]
+    pub is_pinned: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -129,11 +132,16 @@ impl ChatContext {
 
         // Prune messages if we exceed the token limit
         while self.total_tokens > self.max_tokens && self.messages.len() > 1 {
-            // Since we check messages.len() > 1, remove(0) will always return a value
-            let removed_message = self.messages.remove(0);
-            let removed_tokens = Self::estimate_tokens(&removed_message.content);
-            self.total_tokens = self.total_tokens.saturating_sub(removed_tokens);
-            self.pruned_count += 1;
+            // Find the first non-pinned message from the start
+            if let Some(idx) = self.messages.iter().position(|m| !m.is_pinned) {
+                let removed_message = self.messages.remove(idx);
+                let removed_tokens = Self::estimate_tokens(&removed_message.content);
+                self.total_tokens = self.total_tokens.saturating_sub(removed_tokens);
+                self.pruned_count += 1;
+            } else {
+                // If all messages are pinned, we have to keep them all
+                break;
+            }
         }
 
         self.get_stats()
@@ -157,8 +165,10 @@ pub async fn get_context_stats(chat_id: String) -> Result<ContextStats, String> 
     let mut context = ChatContext::new(2048); // We'll make this configurable later
     for msg in messages {
         context.add_message(ChatMessage {
+            id: Some(msg.id),
             role: msg.role,
             content: msg.content,
+            is_pinned: msg.is_pinned,
         });
     }
 
@@ -187,10 +197,13 @@ pub async fn chat(
             .get_chat_messages(chat_id)
             .map_err(|e| format!("Failed to get chat history: {}", e))?;
 
+        // Add all messages, preserving their pinned state and IDs
         for msg in history {
             context.add_message(ChatMessage {
+                id: Some(msg.id),
                 role: msg.role,
                 content: msg.content,
+                is_pinned: msg.is_pinned,
             });
         }
     }
@@ -216,7 +229,7 @@ pub async fn chat(
             if last_message.role == "user" {
                 let mut db_guard = DB.lock().unwrap();
                 let db = db_guard.as_mut().ok_or("Database not initialized")?;
-                db.add_message(chat_id, &last_message.role, &last_message.content)
+                db.add_message(chat_id, &last_message.role, &last_message.content, last_message.is_pinned)
                     .map_err(|e| format!("Failed to save user message: {}", e))?;
             }
         }
@@ -250,7 +263,8 @@ pub async fn chat(
                             if let Some(chat_id) = &chat_id {
                                 let mut db_guard = DB.lock().unwrap();
                                 let db = db_guard.as_mut().ok_or("Database not initialized")?;
-                                db.add_message(chat_id, "assistant", &current_response)
+
+                                db.add_message(chat_id, "assistant", &current_response, false)
                                     .map_err(|e| {
                                         format!("Failed to save assistant response: {}", e)
                                     })?;
@@ -258,8 +272,10 @@ pub async fn chat(
 
                             // Update context with assistant's response
                             let stats = context.add_message(ChatMessage {
+                                id: None,
                                 role: "assistant".to_string(),
                                 content: current_response.clone(),
+                                is_pinned: false,
                             });
 
                             // Emit final context stats
@@ -290,13 +306,27 @@ pub async fn chat(
 }
 
 #[tauri::command]
-pub async fn save_message(chat_id: String, content: String, role: String) -> Result<(), String> {
+pub async fn save_message(
+    chat_id: String,
+    content: String,
+    role: String,
+    is_pinned: Option<bool>,
+) -> Result<(), String> {
     let mut db_guard = DB.lock().unwrap();
     let db = db_guard.as_mut().ok_or("Database not initialized")?;
 
-    db.add_message(&chat_id, &role, &content)
+    db.add_message(&chat_id, &role, &content, is_pinned.unwrap_or(false))
         .map(|_| ())
         .map_err(|e| format!("Failed to save message: {}", e))
+}
+
+#[tauri::command]
+pub async fn toggle_message_pin(message_id: String) -> Result<(), String> {
+    let mut db_guard = DB.lock().unwrap();
+    let db = db_guard.as_mut().ok_or("Database not initialized")?;
+
+    db.toggle_message_pin(&message_id)
+        .map_err(|e| format!("Failed to toggle message pin: {}", e))
 }
 
 #[tauri::command]
@@ -310,9 +340,11 @@ pub async fn get_chat_messages(chat_id: String) -> Result<Vec<ChatMessage>, Stri
 
     Ok(messages
         .into_iter()
-        .map(|msg| ChatMessage {
-            role: msg.role,
-            content: msg.content,
+        .map(|m| ChatMessage {
+            id: Some(m.id),
+            role: m.role,
+            content: m.content,
+            is_pinned: m.is_pinned,
         })
         .collect())
 }

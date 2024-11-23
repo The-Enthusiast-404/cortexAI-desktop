@@ -36,8 +36,10 @@ interface Chat {
 }
 
 interface ChatMessage {
+  id?: string;
   role: string;
   content: string;
+  isPinned?: boolean;
 }
 
 interface ChatProps {
@@ -66,7 +68,7 @@ export default function Chat(props: ChatProps) {
   const [error, setError] = createSignal<string>();
   const [isExporting, setIsExporting] = createSignal(false);
   const [isDark, setIsDark] = createSignal(
-    window.matchMedia("(prefers-color-scheme: dark)").matches,
+    window.matchMedia("(prefers-color-scheme: dark)").matches
   );
 
   const [modelParams, setModelParams] = createSignal<ModelParams>({
@@ -114,7 +116,7 @@ export default function Chat(props: ChatProps) {
         if (!event.payload.done) {
           setCurrentResponse((prev) => prev + event.payload.message.content);
         }
-      }),
+      })
     );
 
     unlisteners.push(
@@ -127,13 +129,41 @@ export default function Chat(props: ChatProps) {
           setCurrentResponse("");
           setIsGenerating(false);
         }
-      }),
+      })
     );
 
     onCleanup(() => {
       unlisteners.forEach((unlisten) => unlisten());
     });
   });
+
+  const toggleMessagePin = async (index: number) => {
+    try {
+      const message = messages()[index];
+      const messageId = message.id;
+
+      // Call backend to toggle pin
+      await invoke("toggle_message_pin", { messageId });
+
+      // Update local state
+      setMessages((prev) => {
+        const newMessages = [...prev];
+        newMessages[index] = {
+          ...newMessages[index],
+          isPinned: !newMessages[index].isPinned,
+        };
+        return newMessages;
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      setError(`Failed to toggle message pin: ${errorMessage}`);
+    }
+  };
+
+  const getPinnedMessages = () => {
+    return messages().filter((msg) => msg.isPinned);
+  };
 
   const sendMessage = async (e: Event) => {
     e.preventDefault();
@@ -154,13 +184,27 @@ export default function Chat(props: ChatProps) {
         props.onNewChat?.(chat.id);
       }
 
-      // Create user message
-      const userMessage = { role: "user", content: userInput };
+      // Create user message with UUID
+      const userMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: userInput,
+        isPinned: false,
+      };
 
       // Clear input and set generating state
       setCurrentInput("");
       setIsGenerating(true);
       setError(undefined);
+
+      // Build context with pinned messages and recent history
+      const allMessages = messages();
+      const pinnedMessages = allMessages.filter((msg) => msg.isPinned);
+      const unpinnedMessages = allMessages.filter((msg) => !msg.isPinned);
+      const recentUnpinned = unpinnedMessages.slice(-5); // Get last 5 unpinned messages
+
+      // Combine pinned and recent messages, ensuring pinned messages come first
+      const contextMessages = [...pinnedMessages, ...recentUnpinned];
 
       // Update messages immediately with user's message
       setMessages((prev) => [...prev, userMessage]);
@@ -168,7 +212,7 @@ export default function Chat(props: ChatProps) {
       // Invoke chat after updating UI
       await invoke("chat", {
         model: props.modelName,
-        messages: [...messages(), userMessage], // Include the new message
+        messages: [...contextMessages, userMessage],
         params: modelParams(),
         chatId: currentChatId,
       });
@@ -292,11 +336,10 @@ export default function Chat(props: ChatProps) {
       </Show>
 
       {/* Messages Container */}
-      {/* Messages Container */}
       <div class="flex-1 overflow-y-auto scroll-smooth no-scrollbar">
         <div class="max-w-3xl mx-auto px-4">
           <For each={messages()}>
-            {(message) => (
+            {(message, index) => (
               <div class="py-6 first:pt-8 border-b border-chat-border-light dark:border-chat-border-dark animate-messageIn">
                 <div class="flex gap-4 items-start">
                   <div
@@ -320,7 +363,12 @@ export default function Chat(props: ChatProps) {
                           : "text-gray-900 dark:text-white"
                       }`}
                     >
-                      <MessageContent content={message.content} />
+                      <MessageContent
+                        content={message.content}
+                        isPinned={message.isPinned}
+                        showPinControls={true}
+                        onTogglePin={() => toggleMessagePin(index())}
+                      />
                     </div>
                   </div>
                 </div>
