@@ -18,6 +18,10 @@
     {
       "identifier": "dialog:allow-save",
       "allow": ["**"]
+    },
+    {
+      "identifier": "dialog:allow-open",
+      "allow": ["**"]
     }
   ]
 }
