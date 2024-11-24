@@ -1,9 +1,11 @@
 mod chat;
 mod database;
 mod ollama;
+mod search;
 
 use crate::database::Database;
 use crate::ollama::{list_models, pull_model};
+use crate::search::search;
 use once_cell::sync::Lazy;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -57,6 +59,7 @@ pub fn run() {
             chat::get_context_stats,
             chat::export_chat,
             chat::import_chat,
+            search,
         ])
         .plugin(tauri_plugin_dialog::init()) // Dialog plugin for file dialogs
         .plugin(tauri_plugin_fs::init()) // File system plugin

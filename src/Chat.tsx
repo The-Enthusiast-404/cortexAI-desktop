@@ -27,6 +27,7 @@ import {
   User,
 } from "lucide-solid";
 import ContextIndicator from "./ContextIndicator";
+import SearchResults from "./SearchResults";
 
 interface Chat {
   id: string;
@@ -60,6 +61,17 @@ interface StreamResponse {
   chat_id?: string;
 }
 
+interface SearchResponse {
+  results: SearchResult[];
+  query: string;
+}
+
+interface SearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
 export default function Chat(props: ChatProps) {
   const [messages, setMessages] = createSignal<ChatMessage[]>([]);
   const [currentInput, setCurrentInput] = createSignal("");
@@ -79,6 +91,8 @@ export default function Chat(props: ChatProps) {
     repeat_penalty: 1.1,
     max_tokens: 2048,
   });
+
+  const [searchResults, setSearchResults] = createSignal<SearchResult[]>([]);
 
   let messagesEndRef: HTMLDivElement | undefined;
   const scrollToBottom = () => {
@@ -198,25 +212,73 @@ export default function Chat(props: ChatProps) {
       setIsGenerating(true);
       setError(undefined);
 
-      // Build context with pinned messages and recent history
-      const allMessages = messages();
-      const pinnedMessages = allMessages.filter((msg) => msg.isPinned);
-      const unpinnedMessages = allMessages.filter((msg) => !msg.isPinned);
-      const recentUnpinned = unpinnedMessages.slice(-5); // Get last 5 unpinned messages
+      // Perform web search for relevant queries
+      if (
+        userInput.toLowerCase().includes("search") ||
+        userInput.includes("?")
+      ) {
+        console.log("Performing web search for:", userInput);
+        try {
+          const searchResponse = await invoke<SearchResponse>("search", {
+            query: userInput,
+          });
+          console.log("Got search results:", searchResponse);
 
-      // Combine pinned and recent messages, ensuring pinned messages come first
-      const contextMessages = [...pinnedMessages, ...recentUnpinned];
+          // Create a context message from search results
+          const searchContext = searchResponse.results
+            .map(
+              (result) => `[${result.title}](${result.url})\n${result.snippet}`
+            )
+            .join("\n\n");
 
-      // Update messages immediately with user's message
-      setMessages((prev) => [...prev, userMessage]);
+          // Create a prompt that includes search results
+          const searchPrompt = `I want you to act as a helpful AI assistant. I will provide you with search results and a query. Your task is to analyze these search results and provide a comprehensive, well-structured response that answers the query. Include relevant citations to the sources.
 
-      // Invoke chat after updating UI
-      await invoke("chat", {
-        model: props.modelName,
-        messages: [...contextMessages, userMessage],
-        params: modelParams(),
-        chatId: currentChatId,
-      });
+Query: ${userInput}
+
+Search Results:
+${searchContext}
+
+Please provide a detailed response that:
+1. Summarizes the key information from the search results
+2. Directly answers the query
+3. Includes relevant citations using [Source Title](URL) format
+4. Mentions any limitations or uncertainties in the information
+5. Provides a balanced view of the topic`;
+
+          // Update messages immediately with user's message
+          setMessages((prev) => [...prev, userMessage]);
+
+          // Invoke chat with search context
+          await invoke("chat", {
+            model: props.modelName,
+            messages: [
+              ...messages(),
+              userMessage,
+              {
+                role: "system",
+                content: searchPrompt,
+              },
+            ],
+            params: modelParams(),
+            chatId: currentChatId,
+          });
+        } catch (searchError) {
+          console.error("Search failed:", searchError);
+          setError(`Search failed: ${searchError}`);
+          setIsGenerating(false);
+        }
+      } else {
+        // Regular chat without search
+        setMessages((prev) => [...prev, userMessage]);
+
+        await invoke("chat", {
+          model: props.modelName,
+          messages: [...messages(), userMessage],
+          params: modelParams(),
+          chatId: currentChatId,
+        });
+      }
     } catch (error) {
       console.error("Chat error:", error);
       setError(`Failed to send message: ${error}`);
@@ -358,6 +420,11 @@ export default function Chat(props: ChatProps) {
           </div>
         </div>
       </Show>
+
+      {/* Search Results */}
+      {searchResults().length > 0 && (
+        <SearchResults results={searchResults()} />
+      )}
 
       {/* Messages Container */}
       <div class="flex-1 overflow-y-auto scroll-smooth no-scrollbar">
