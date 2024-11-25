@@ -488,53 +488,46 @@ Please provide a detailed response that:
 
       {/* Input Form */}
       <div class="flex-none border-t border-chat-border-light dark:border-chat-border-dark bg-chat-light/80 dark:bg-chat-darker/80 backdrop-blur supports-[backdrop-filter]:bg-chat-light/60 dark:supports-[backdrop-filter]:bg-chat-darker/60">
-        <form onSubmit={sendMessage} class="flex items-center space-x-2 p-4">
-          <button
-            type="button"
-            onClick={() => setIsWebSearchEnabled(!isWebSearchEnabled())}
-            class={`p-2 rounded-lg transition-colors ${
-              isWebSearchEnabled()
-                ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
-                : "hover:bg-gray-100 text-gray-600"
-            }`}
-            title={
-              isWebSearchEnabled()
-                ? "Web search enabled"
-                : "Web search disabled"
-            }
-          >
-            <Globe size={20} />
-          </button>
-          <div class="flex-1 relative">
+        <form onSubmit={sendMessage} class="max-w-3xl mx-auto p-4">
+          <div class="relative flex items-center">
+            <button
+              type="button"
+              onClick={() => setIsWebSearchEnabled(!isWebSearchEnabled())}
+              class={`absolute left-2 p-2 rounded-lg transition-colors ${
+                isWebSearchEnabled()
+                  ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
+                  : "hover:bg-gray-100 text-gray-600"
+              }`}
+              title={
+                isWebSearchEnabled()
+                  ? "Web search enabled"
+                  : "Web search disabled"
+              }
+            >
+              <Globe size={20} />
+            </button>
             <input
               type="text"
               value={currentInput()}
               onInput={(e) => setCurrentInput(e.currentTarget.value)}
               placeholder="Type your message..."
-              class="w-full pl-4 pr-12 py-3 rounded-xl border border-chat-border-light dark:border-chat-border-dark
-                     bg-chat-input-light dark:bg-chat-input-dark text-gray-900 dark:text-white
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
-                     disabled:bg-gray-50 dark:disabled:bg-gray-800
-                     placeholder-gray-400 dark:placeholder-gray-500
-                     transition-all"
+              class="w-full pl-12 pr-24 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:border-blue-500 dark:focus:border-blue-400"
               disabled={isGenerating()}
             />
-            <div class="absolute right-2 flex items-center">
-              <Button.Root
-                type="submit"
-                disabled={isGenerating()}
-                class="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300
-                       disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-500
-                       transition-colors rounded-lg"
+            <Button.Root
+              type="submit"
+              disabled={isGenerating()}
+              class="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300
+                     disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-500
+                     transition-colors rounded-lg"
+            >
+              <Show
+                when={!isGenerating()}
+                fallback={<Loader class="w-5 h-5 animate-spin" />}
               >
-                <Show
-                  when={!isGenerating()}
-                  fallback={<Loader class="w-5 h-5 animate-spin" />}
-                >
-                  <Send class="w-5 h-5" />
-                </Show>
-              </Button.Root>
-            </div>
+                <Send class="w-5 h-5" />
+              </Show>
+            </Button.Root>
           </div>
 
           {/* Optional typing indicator */}
