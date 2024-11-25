@@ -25,6 +25,7 @@ import {
   Sun,
   Bot,
   User,
+  Globe,
 } from "lucide-solid";
 import ContextIndicator from "./ContextIndicator";
 import SearchResults from "./SearchResults";
@@ -93,6 +94,7 @@ export default function Chat(props: ChatProps) {
   });
 
   const [searchResults, setSearchResults] = createSignal<SearchResult[]>([]);
+  const [isWebSearchEnabled, setIsWebSearchEnabled] = createSignal(false);
 
   let messagesEndRef: HTMLDivElement | undefined;
   const scrollToBottom = () => {
@@ -212,11 +214,8 @@ export default function Chat(props: ChatProps) {
       setIsGenerating(true);
       setError(undefined);
 
-      // Perform web search for relevant queries
-      if (
-        userInput.toLowerCase().includes("search") ||
-        userInput.includes("?")
-      ) {
+      // Perform web search if enabled
+      if (isWebSearchEnabled()) {
         console.log("Performing web search for:", userInput);
         try {
           const searchResponse = await invoke<SearchResponse>("search", {
@@ -489,8 +488,24 @@ Please provide a detailed response that:
 
       {/* Input Form */}
       <div class="flex-none border-t border-chat-border-light dark:border-chat-border-dark bg-chat-light/80 dark:bg-chat-darker/80 backdrop-blur supports-[backdrop-filter]:bg-chat-light/60 dark:supports-[backdrop-filter]:bg-chat-darker/60">
-        <form onSubmit={sendMessage} class="max-w-3xl mx-auto p-4">
-          <div class="relative flex items-center">
+        <form onSubmit={sendMessage} class="flex items-center space-x-2 p-4">
+          <button
+            type="button"
+            onClick={() => setIsWebSearchEnabled(!isWebSearchEnabled())}
+            class={`p-2 rounded-lg transition-colors ${
+              isWebSearchEnabled()
+                ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
+                : "hover:bg-gray-100 text-gray-600"
+            }`}
+            title={
+              isWebSearchEnabled()
+                ? "Web search enabled"
+                : "Web search disabled"
+            }
+          >
+            <Globe size={20} />
+          </button>
+          <div class="flex-1 relative">
             <input
               type="text"
               value={currentInput()}
