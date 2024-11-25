@@ -394,7 +394,7 @@ Please provide a detailed response that:
                 class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
                 onClick={() => setShowSettings(!showSettings())}
               >
-                <Settings class="h-4 w-4" />
+                <Settings class="h-4 w-4 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white" />
               </Button.Root>
             </div>
           </div>
@@ -495,8 +495,8 @@ Please provide a detailed response that:
               onClick={() => setIsWebSearchEnabled(!isWebSearchEnabled())}
               class={`absolute left-2 p-2 rounded-lg transition-colors ${
                 isWebSearchEnabled()
-                  ? "bg-blue-100 text-blue-600 hover:bg-blue-200"
-                  : "hover:bg-gray-100 text-gray-600"
+                  ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800"
+                  : "hover:bg-gray-100 text-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white"
               }`}
               title={
                 isWebSearchEnabled()
@@ -511,14 +511,14 @@ Please provide a detailed response that:
               value={currentInput()}
               onInput={(e) => setCurrentInput(e.currentTarget.value)}
               placeholder="Type your message..."
-              class="w-full pl-12 pr-24 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:border-blue-500 dark:focus:border-blue-400"
+              class="w-full pl-12 pr-24 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
               disabled={isGenerating()}
             />
             <Button.Root
               type="submit"
               disabled={isGenerating()}
-              class="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300
-                     disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-500
+              class="absolute right-2 p-2 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white
+                     disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-300
                      transition-colors rounded-lg"
             >
               <Show
