@@ -30,6 +30,7 @@ import {
 import ContextIndicator from "./ContextIndicator";
 import SearchResults from "./SearchResults";
 import SystemPromptSelector from "./SystemPromptSelector";
+import FollowUpSuggestions from "./FollowUpSuggestions";
 import { predefinedPrompts } from "./SystemPrompts";
 
 interface Chat {
@@ -54,9 +55,15 @@ interface ChatProps {
   onNewChat?: (chatId: string) => void;
 }
 
+interface FollowUpSuggestion {
+  text: string;
+  type_: "web" | "context"; // Match the Rust field name
+}
+
 interface ChatResponse {
   message: ChatMessage;
   done: boolean;
+  follow_ups?: FollowUpSuggestion[];
 }
 
 interface StreamResponse {
@@ -103,6 +110,8 @@ export default function Chat(props: ChatProps) {
   const [customPrompt, setCustomPrompt] = createSignal("");
   const [activeSystemPrompt, setActiveSystemPrompt] = createSignal("");
 
+  const [followUps, setFollowUps] = createSignal<FollowUpSuggestion[]>([]);
+
   const getCurrentSystemPrompt = () => {
     if (activeSystemPrompt()) return activeSystemPrompt();
     const defaultPrompt = predefinedPrompts.find((p) => p.id === "general");
@@ -120,6 +129,11 @@ export default function Chat(props: ChatProps) {
     ); // Debug log
     setActiveSystemPrompt(newPrompt);
     setShowSettings(false);
+  };
+
+  const handleFollowUpSelect = (suggestion: string) => {
+    setCurrentInput(suggestion);
+    setFollowUps([]); // Clear suggestions after selection
   };
 
   let messagesEndRef: HTMLDivElement | undefined;
@@ -156,22 +170,27 @@ export default function Chat(props: ChatProps) {
 
     unlisteners.push(
       await listen<ChatResponse>("chat-response", (event) => {
-        if (!event.payload.done) {
-          setCurrentResponse((prev) => prev + event.payload.message.content);
-        }
+        // Accumulate streaming response
+        setCurrentResponse((prev) => prev + event.payload.message.content);
       })
     );
 
+    // Handle completion with follow-ups
     unlisteners.push(
-      await listen<StreamResponse>("chat-complete", (event) => {
-        if (event.payload.done) {
+      await listen<ChatResponse>("chat-complete", (event) => {
+        // Add final message to the list
+        const finalResponse = currentResponse();
+        if (finalResponse.trim()) {
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: currentResponse() },
+            { role: "assistant", content: finalResponse },
           ]);
-          setCurrentResponse("");
-          setIsGenerating(false);
         }
+        setCurrentResponse("");
+
+        // Set follow-ups and stop generating
+        setFollowUps(event.payload.follow_ups || []);
+        setIsGenerating(false);
       })
     );
 
@@ -384,6 +403,15 @@ Please provide a detailed response that:
     }
   });
 
+  // Add effect to scroll when follow-ups appear
+  createEffect(() => {
+    if (followUps().length > 0) {
+      setTimeout(() => {
+        messagesEndRef?.scrollIntoView({ behavior: "smooth" });
+      }, 100); // Small delay to ensure DOM is updated
+    }
+  });
+
   return (
     <div class="flex flex-col h-full bg-chat-lighter dark:bg-chat-dark">
       {/* Header */}
@@ -567,6 +595,27 @@ Please provide a detailed response that:
                     <MessageContent content={currentResponse()} />
                   </div>
                 </div>
+              </div>
+            </div>
+          </Show>
+
+          {/* Show follow-ups after response is complete */}
+          <Show
+            when={
+              !isGenerating() &&
+              currentResponse() === "" &&
+              followUps().length > 0
+            }
+          >
+            <div class="py-6 px-4 bg-gray-50 dark:bg-gray-800/50 border-t border-b border-gray-100 dark:border-gray-800 animate-fadeIn">
+              <div class="max-w-3xl mx-auto">
+                <FollowUpSuggestions
+                  suggestions={followUps().map((f) => ({
+                    text: f.text,
+                    type: f.type_,
+                  }))}
+                  onSelect={handleFollowUpSelect}
+                />
               </div>
             </div>
           </Show>

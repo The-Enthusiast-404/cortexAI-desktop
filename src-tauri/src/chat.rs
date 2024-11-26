@@ -36,10 +36,11 @@ pub struct ChatRequest {
     pub system: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatResponse {
     pub message: ChatMessage,
     pub done: bool,
+    pub follow_ups: Option<Vec<FollowUpSuggestion>>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -47,6 +48,12 @@ pub struct StreamResponse {
     pub content: String,
     pub done: bool,
     pub chat_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FollowUpSuggestion {
+    pub text: String,
+    pub type_: String, // "web" or "context"
 }
 
 // Context Management Structures
@@ -155,6 +162,84 @@ impl ChatContext {
     pub fn get_messages(&self) -> &Vec<ChatMessage> {
         &self.messages
     }
+}
+
+// Generate follow-up suggestions based on the conversation context
+pub async fn generate_follow_ups(messages: &[ChatMessage], current_response: &str) -> Result<Vec<FollowUpSuggestion>, String> {
+    let client = Client::new();
+    let url = "http://localhost:11434/api/generate";
+
+    let prompt = format!(
+        "Based on this conversation, generate 3 natural follow-up questions. Each question should be on a new line and end with a question mark. Questions should be concise and help explore the topic further.\n\nResponse to analyze: {}\n\nQuestions:",
+        current_response
+    );
+    
+    println!("Generating follow-ups for response: {}", current_response);
+    
+    let request = serde_json::json!({
+        "model": "gemma2:9b",
+        "prompt": prompt,
+        "stream": false,
+        "options": {
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "top_k": 40,
+            "repeat_penalty": 1.1,
+            "num_predict": 150,
+        }
+    });
+
+    let response = client
+        .post(url)
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to Ollama: {}", e))?;
+
+    let response_text = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to get response text: {}", e))?;
+    
+    println!("Raw Ollama response: {}", response_text);
+
+    // Parse Ollama's response format
+    let ollama_response: serde_json::Value = serde_json::from_str(&response_text)
+        .map_err(|e| format!("Failed to parse Ollama response: {}", e))?;
+    
+    // Extract the response text from Ollama's format
+    let response_content = ollama_response["response"]
+        .as_str()
+        .ok_or("Failed to get response content")?;
+
+    println!("Extracted response content: {}", response_content);
+
+    // Extract questions from the response, ensuring they end with question marks
+    let questions: Vec<String> = response_content
+        .lines()
+        .filter(|line| line.trim().ends_with("?"))
+        .take(3)
+        .map(|s| s.trim().to_string())
+        .collect();
+
+    println!("Extracted questions: {:?}", questions);
+
+    if questions.is_empty() {
+        println!("No valid questions found in response");
+        return Ok(vec![]);
+    }
+
+    // Convert questions to FollowUpSuggestions
+    let suggestions = questions
+        .into_iter()
+        .map(|text| FollowUpSuggestion {
+            text,
+            type_: "context".to_string(),
+        })
+        .collect::<Vec<_>>();
+
+    println!("Generated {} follow-up suggestions", suggestions.len());
+    Ok(suggestions)
 }
 
 // Tauri Commands
@@ -282,24 +367,27 @@ pub async fn chat(
                     if let Ok(chat_response) = serde_json::from_str::<ChatResponse>(&text) {
                         current_response.push_str(&chat_response.message.content);
 
+                        // Emit streaming response
                         window
-                            .emit("chat-response", &chat_response)
+                            .emit(
+                                "chat-response",
+                                ChatResponse {
+                                    message: ChatMessage {
+                                        id: None,
+                                        role: "assistant".to_string(),
+                                        content: chat_response.message.content,
+                                        is_pinned: Some(false),
+                                        system_prompt_type: None,
+                                    },
+                                    done: false,
+                                    follow_ups: None,
+                                },
+                            )
                             .map_err(|e| format!("Failed to emit response: {}", e))?;
 
                         if chat_response.done {
-                            if let Some(chat_id) = &chat_id {
-                                let mut db_guard = DB.lock().unwrap();
-                                let db = db_guard.as_mut().ok_or("Database not initialized")?;
-
-                                db.add_message(
-                                    chat_id,
-                                    "assistant",
-                                    &current_response,
-                                    false,
-                                    system_prompt_type.clone(),
-                                )
-                                .map_err(|e| format!("Failed to save assistant response: {}", e))?;
-                            }
+                            // Generate follow-up suggestions
+                            let follow_ups = generate_follow_ups(context.get_messages(), &current_response).await?;
 
                             // Update context with assistant's response
                             let stats = context.add_message(ChatMessage {
@@ -315,14 +403,44 @@ pub async fn chat(
                                 .emit("context-update", &stats)
                                 .map_err(|e| format!("Failed to emit context stats: {}", e))?;
 
-                            // Emit completion
+                            // Save message if chat_id exists
+                            if let Some(chat_id) = &chat_id {
+                                let mut db_guard = DB.lock().unwrap();
+                                let db = db_guard.as_mut().ok_or("Database not initialized")?;
+
+                                db.add_message(
+                                    chat_id,
+                                    "assistant",
+                                    &current_response,
+                                    false,
+                                    system_prompt_type.clone(),
+                                )
+                                .map_err(|e| format!("Failed to save assistant response: {}", e))?;
+                            }
+
+                            // Generate follow-ups and emit final response
                             let stream_response = StreamResponse {
                                 content: current_response.clone(),
                                 done: true,
                                 chat_id: chat_id.clone(),
                             };
+
+                            // Emit completion with follow-ups
                             window
-                                .emit("chat-complete", &stream_response)
+                                .emit(
+                                    "chat-complete",
+                                    ChatResponse {
+                                        message: ChatMessage {
+                                            id: None,
+                                            role: "assistant".to_string(),
+                                            content: current_response.clone(),
+                                            is_pinned: Some(false),
+                                            system_prompt_type: None,
+                                        },
+                                        done: true,
+                                        follow_ups: Some(follow_ups),
+                                    },
+                                )
                                 .map_err(|e| format!("Failed to emit completion: {}", e))?;
                         }
 
