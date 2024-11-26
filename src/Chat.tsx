@@ -32,6 +32,7 @@ import SearchResults from "./SearchResults";
 import SystemPromptSelector from "./SystemPromptSelector";
 import FollowUpSuggestions from "./FollowUpSuggestions";
 import { predefinedPrompts } from "./SystemPrompts";
+import { generateAcademicPrompt } from "./AcademicPrompts";
 
 interface Chat {
   id: string;
@@ -81,6 +82,10 @@ interface SearchResult {
   title: string;
   url: string;
   snippet: string;
+  source_type?: string;
+  authors?: string[];
+  publish_date?: string;
+  doi?: string;
 }
 
 export default function Chat(props: ChatProps) {
@@ -111,6 +116,7 @@ export default function Chat(props: ChatProps) {
   const [activeSystemPrompt, setActiveSystemPrompt] = createSignal("");
 
   const [followUps, setFollowUps] = createSignal<FollowUpSuggestion[]>([]);
+  const [searchMode, setSearchMode] = createSignal<string>("general");
 
   const getCurrentSystemPrompt = () => {
     if (activeSystemPrompt()) return activeSystemPrompt();
@@ -266,18 +272,38 @@ export default function Chat(props: ChatProps) {
         try {
           const searchResponse = await invoke<SearchResponse>("search", {
             query: userInput,
+            mode: searchMode(),
           });
           console.log("Got search results:", searchResponse);
 
           // Create a context message from search results
           const searchContext = searchResponse.results
-            .map(
-              (result) => `[${result.title}](${result.url})\n${result.snippet}`
-            )
+            .map((result) => {
+              let citation = `[${result.title}](${result.url})\n${result.snippet}`;
+              // Add academic metadata if available
+              if (result.source_type === "academic") {
+                if (result.authors && result.authors.length > 0) {
+                  citation += `\nAuthors: ${result.authors.join(", ")}`;
+                }
+                if (result.publish_date) {
+                  citation += `\nPublished: ${result.publish_date}`;
+                }
+                if (result.doi) {
+                  citation += `\nDOI: ${result.doi}`;
+                }
+              }
+              return citation;
+            })
             .join("\n\n");
 
-          // Create a prompt that includes search results
-          const searchPrompt = `I want you to act as a helpful AI assistant. I will provide you with search results and a query. Your task is to analyze these search results and provide a comprehensive, well-structured response that answers the query. Include relevant citations to the sources.
+          // Create a mode-specific prompt
+          const searchPrompt =
+            searchMode() === "academic"
+              ? generateAcademicPrompt({
+                  query: userInput,
+                  searchContext: searchContext,
+                })
+              : `I want you to act as a helpful AI assistant. I will provide you with search results and a query. Your task is to analyze these search results and provide a comprehensive, well-structured response that answers the query. Include relevant citations to the sources.
 
 Query: ${userInput}
 
@@ -513,6 +539,8 @@ Please provide a detailed response that:
                   onParamsChange={setModelParams}
                   isWebSearchEnabled={isWebSearchEnabled()}
                   onWebSearchChange={setIsWebSearchEnabled}
+                  searchMode={searchMode()}
+                  onSearchModeChange={setSearchMode}
                 />
               </div>
             </div>
