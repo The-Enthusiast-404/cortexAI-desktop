@@ -39,7 +39,7 @@ const FocusMode: Component<FocusModeProps> = (props) => {
   return (
     <div class="relative inline-block" onMouseLeave={() => setIsOpen(false)}>
       <Show when={isOpen()}>
-        <div class="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-gray-900 rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 z-[9999]">
+        <div class="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-gray-900 rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 z-[1]">
           <div class="py-1">
             {modes.map((mode) => (
               <button

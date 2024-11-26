@@ -660,29 +660,33 @@ Please provide a detailed response that:
       {/* Input Form */}
       <div class="flex-none border-t border-chat-border-light dark:border-chat-border-dark bg-chat-light/80 dark:bg-chat-darker/80 backdrop-blur supports-[backdrop-filter]:bg-chat-light/60 dark:supports-[backdrop-filter]:bg-chat-darker/60">
         <form onSubmit={sendMessage} class="max-w-3xl mx-auto p-4">
-          <div class="relative flex items-center">
-            <div
-              class="absolute left-2 top-1/2 -translate-y-1/2"
-              style={{ "z-index": 9999 }}
-            >
+          <div class="relative flex items-center gap-2 min-h-[48px]">
+            <div class="flex-none z-[1]">
               <FocusMode
                 mode={mode()}
-                onModeChange={(newMode) => setMode(newMode)}
+                onModeChange={(newMode) => {
+                  console.log("Focus mode changed:", newMode);
+                  setMode(newMode);
+                }}
               />
             </div>
             <input
               type="text"
               value={currentInput()}
-              onInput={(e) => setCurrentInput(e.currentTarget.value)}
+              onInput={(e) => {
+                console.log("Input changed:", e.currentTarget.value);
+                setCurrentInput(e.currentTarget.value);
+              }}
+              onFocus={() => console.log("Input focused")}
               placeholder="Type your message..."
-              class="w-full pl-32 pr-24 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+              class="chat-input flex-1 min-h-[48px] px-4 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 z-[2] text-gray-900 dark:text-white !text-base !font-normal"
             />
             <Button.Root
               type="submit"
               disabled={isGenerating()}
-              class="absolute right-2 p-2 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white
+              class="flex-none p-2 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white
                      disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-300
-                     transition-colors rounded-lg"
+                     transition-colors rounded-lg z-[1]"
             >
               <Show
                 when={!isGenerating()}

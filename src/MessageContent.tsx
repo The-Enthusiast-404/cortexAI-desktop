@@ -140,7 +140,7 @@ export default function MessageContent(props: MessageContentProps) {
   };
 
   return (
-    <div class="relative group">
+    <div class="message-content relative group">
       {props.showPinControls && (
         <button
           onClick={() => props.onTogglePin?.()}
@@ -155,7 +155,7 @@ export default function MessageContent(props: MessageContentProps) {
         </button>
       )}
       <div
-        class={`prose dark:prose-invert max-w-none ${
+        class={`message-content-inner prose dark:prose-invert max-w-none ${
           props.isPinned ? "border-l-2 border-blue-500 pl-2" : ""
         }`}
       >
