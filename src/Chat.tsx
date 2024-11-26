@@ -26,6 +26,7 @@ import {
   Bot,
   User,
   Globe,
+  Sparkles,
 } from "lucide-solid";
 import ContextIndicator from "./ContextIndicator";
 import SearchResults from "./SearchResults";
@@ -33,6 +34,7 @@ import SystemPromptSelector from "./SystemPromptSelector";
 import FollowUpSuggestions from "./FollowUpSuggestions";
 import { predefinedPrompts } from "./SystemPrompts";
 import { generateAcademicPrompt } from "./AcademicPrompts";
+import FocusMode from "./FocusMode";
 
 interface Chat {
   id: string;
@@ -117,6 +119,8 @@ export default function Chat(props: ChatProps) {
 
   const [followUps, setFollowUps] = createSignal<FollowUpSuggestion[]>([]);
   const [searchMode, setSearchMode] = createSignal<string>("general");
+
+  const [mode, setMode] = createSignal("offline");
 
   const getCurrentSystemPrompt = () => {
     if (activeSystemPrompt()) return activeSystemPrompt();
@@ -657,29 +661,21 @@ Please provide a detailed response that:
       <div class="flex-none border-t border-chat-border-light dark:border-chat-border-dark bg-chat-light/80 dark:bg-chat-darker/80 backdrop-blur supports-[backdrop-filter]:bg-chat-light/60 dark:supports-[backdrop-filter]:bg-chat-darker/60">
         <form onSubmit={sendMessage} class="max-w-3xl mx-auto p-4">
           <div class="relative flex items-center">
-            <button
-              type="button"
-              onClick={() => setIsWebSearchEnabled(!isWebSearchEnabled())}
-              class={`absolute left-2 p-2 rounded-lg transition-colors ${
-                isWebSearchEnabled()
-                  ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800"
-                  : "hover:bg-gray-100 text-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white"
-              }`}
-              title={
-                isWebSearchEnabled()
-                  ? "Web search enabled"
-                  : "Web search disabled"
-              }
+            <div
+              class="absolute left-2 top-1/2 -translate-y-1/2"
+              style={{ "z-index": 9999 }}
             >
-              <Globe size={20} />
-            </button>
+              <FocusMode
+                mode={mode()}
+                onModeChange={(newMode) => setMode(newMode)}
+              />
+            </div>
             <input
               type="text"
               value={currentInput()}
               onInput={(e) => setCurrentInput(e.currentTarget.value)}
               placeholder="Type your message..."
-              class="w-full pl-12 pr-24 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-              disabled={isGenerating()}
+              class="w-full pl-32 pr-24 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
             />
             <Button.Root
               type="submit"
