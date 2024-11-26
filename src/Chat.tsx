@@ -677,6 +677,15 @@ Please provide a detailed response that:
                 console.log("Input changed:", e.currentTarget.value);
                 setCurrentInput(e.currentTarget.value);
               }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!isGenerating() && currentInput().trim()) {
+                    sendMessage();
+                  }
+                }
+              }}
               onFocus={() => console.log("Input focused")}
               placeholder="Type your message..."
               class="chat-input flex-1 min-h-[48px] px-4 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 z-[2] text-gray-900 dark:text-white !text-base !font-normal"

@@ -37,13 +37,14 @@ const FocusMode: Component<FocusModeProps> = (props) => {
   };
 
   return (
-    <div class="relative inline-block" onMouseLeave={() => setIsOpen(false)}>
+    <div class="relative inline-block">
       <Show when={isOpen()}>
         <div class="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-gray-900 rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 z-[1]">
           <div class="py-1">
             {modes.map((mode) => (
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   props.onModeChange(mode.id);
                   setIsOpen(false);
                 }}
@@ -67,7 +68,10 @@ const FocusMode: Component<FocusModeProps> = (props) => {
         </div>
       </Show>
       <button
-        onClick={() => setIsOpen(!isOpen())}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen());
+        }}
         class="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
         classList={{
           "bg-gray-50 dark:bg-gray-800": isOpen(),
