@@ -45,6 +45,7 @@ interface ChatMessage {
   role: string;
   content: string;
   isPinned?: boolean;
+  systemPromptType?: string;
 }
 
 interface ChatProps {
@@ -217,27 +218,22 @@ export default function Chat(props: ChatProps) {
 
     try {
       const systemPrompt = getCurrentSystemPrompt();
+      const systemPromptType = customPrompt() ? "custom" : selectedPromptId();
+
       console.log("Using system prompt:", {
         id: selectedPromptId(),
+        type: systemPromptType,
         customPrompt: customPrompt() ? "present" : "none",
         activePrompt: systemPrompt.substring(0, 100) + "...",
       });
 
-      if (!currentChatId) {
-        const chat = await invoke<Chat>("create_chat", {
-          title: userInput.slice(0, 50),
-          model: props.modelName,
-        });
-        currentChatId = chat.id;
-        props.onNewChat?.(chat.id);
-      }
-
-      // Create user message with UUID
+      // Create user message with system prompt type
       const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
         content: userInput,
         isPinned: false,
+        systemPromptType: systemPromptType,
       };
 
       // Clear input and set generating state
@@ -310,6 +306,7 @@ Please provide a detailed response that:
           params: modelParams(),
           chatId: currentChatId,
           systemPrompt: systemPrompt,
+          systemPromptType: systemPromptType,
         });
       }
     } catch (error) {
@@ -516,17 +513,26 @@ Please provide a detailed response that:
             {(message, index) => (
               <div class="py-6 first:pt-8 border-b border-chat-border-light dark:border-chat-border-dark animate-messageIn">
                 <div class="flex gap-4 items-start">
-                  <div
-                    class={`flex-none p-2 rounded-full ${
-                      message.role === "user"
-                        ? "bg-blue-600 dark:bg-blue-500"
-                        : "bg-green-600 dark:bg-green-500"
-                    }`}
-                  >
-                    {message.role === "user" ? (
-                      <User class="w-4 h-4 text-white" />
-                    ) : (
-                      <Bot class="w-4 h-4 text-white" />
+                  <div class="flex flex-col items-center gap-2">
+                    <div
+                      class={`flex-none p-2 rounded-full ${
+                        message.role === "user"
+                          ? "bg-blue-600 dark:bg-blue-500"
+                          : "bg-green-600 dark:bg-green-500"
+                      }`}
+                    >
+                      {message.role === "user" ? (
+                        <User class="w-4 h-4 text-white" />
+                      ) : (
+                        <Bot class="w-4 h-4 text-white" />
+                      )}
+                    </div>
+                    {message.systemPromptType && (
+                      <div class="text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                        {message.systemPromptType === "custom"
+                          ? "Custom"
+                          : message.systemPromptType}
+                      </div>
                     )}
                   </div>
                   <div class="flex-1 min-w-0">

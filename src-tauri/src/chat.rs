@@ -13,8 +13,8 @@ pub struct ChatMessage {
     pub id: Option<String>,
     pub role: String,
     pub content: String,
-    #[serde(default)]
-    pub is_pinned: bool,
+    pub is_pinned: Option<bool>,
+    pub system_prompt_type: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -137,7 +137,7 @@ impl ChatContext {
             // Find the last non-pinned message before the most recent message
             if let Some(idx) = self.messages[..self.messages.len()-1]
                 .iter()
-                .rposition(|m| !m.is_pinned) 
+                .rposition(|m| !m.is_pinned.unwrap_or(false)) 
             {
                 let removed_message = self.messages.remove(idx);
                 let removed_tokens = Self::estimate_tokens(&removed_message.content);
@@ -173,7 +173,8 @@ pub async fn get_context_stats(chat_id: String) -> Result<ContextStats, String> 
             id: Some(msg.id),
             role: msg.role,
             content: msg.content,
-            is_pinned: msg.is_pinned,
+            is_pinned: Some(msg.is_pinned),
+            system_prompt_type: msg.system_prompt_type,
         });
     }
 
@@ -188,6 +189,7 @@ pub async fn chat(
     params: ModelParams,
     chat_id: Option<String>,
     system_prompt: Option<String>,
+    system_prompt_type: Option<String>,
 ) -> Result<(), String> {
     let client = Client::new();
     let url = "http://localhost:11434/api/chat";
@@ -201,7 +203,8 @@ pub async fn chat(
             id: None,
             role: "system".to_string(),
             content: system.clone(),
-            is_pinned: false,
+            is_pinned: Some(false),
+            system_prompt_type: None,
         });
     }
 
@@ -219,7 +222,8 @@ pub async fn chat(
                 id: Some(msg.id),
                 role: msg.role,
                 content: msg.content,
-                is_pinned: msg.is_pinned,
+                is_pinned: Some(msg.is_pinned),
+                system_prompt_type: msg.system_prompt_type,
             });
         }
     }
@@ -246,8 +250,14 @@ pub async fn chat(
             if last_message.role == "user" {
                 let mut db_guard = DB.lock().unwrap();
                 let db = db_guard.as_mut().ok_or("Database not initialized")?;
-                db.add_message(chat_id, &last_message.role, &last_message.content, last_message.is_pinned)
-                    .map_err(|e| format!("Failed to save user message: {}", e))?;
+                db.add_message(
+                    chat_id,
+                    &last_message.role,
+                    &last_message.content,
+                    last_message.is_pinned.unwrap_or(false),
+                    last_message.system_prompt_type.clone(),
+                )
+                .map_err(|e| format!("Failed to save user message: {}", e))?;
             }
         }
     }
@@ -281,10 +291,14 @@ pub async fn chat(
                                 let mut db_guard = DB.lock().unwrap();
                                 let db = db_guard.as_mut().ok_or("Database not initialized")?;
 
-                                db.add_message(chat_id, "assistant", &current_response, false)
-                                    .map_err(|e| {
-                                        format!("Failed to save assistant response: {}", e)
-                                    })?;
+                                db.add_message(
+                                    chat_id,
+                                    "assistant",
+                                    &current_response,
+                                    false,
+                                    system_prompt_type.clone(),
+                                )
+                                .map_err(|e| format!("Failed to save assistant response: {}", e))?;
                             }
 
                             // Update context with assistant's response
@@ -292,7 +306,8 @@ pub async fn chat(
                                 id: None,
                                 role: "assistant".to_string(),
                                 content: current_response.clone(),
-                                is_pinned: false,
+                                is_pinned: Some(false),
+                                system_prompt_type: None,
                             });
 
                             // Emit final context stats
@@ -328,13 +343,20 @@ pub async fn save_message(
     content: String,
     role: String,
     is_pinned: Option<bool>,
+    system_prompt_type: Option<String>,
 ) -> Result<(), String> {
     let mut db_guard = DB.lock().unwrap();
     let db = db_guard.as_mut().ok_or("Database not initialized")?;
 
-    db.add_message(&chat_id, &role, &content, is_pinned.unwrap_or(false))
-        .map(|_| ())
-        .map_err(|e| format!("Failed to save message: {}", e))
+    db.add_message(
+        &chat_id,
+        &role,
+        &content,
+        is_pinned.unwrap_or(false),
+        system_prompt_type,
+    )
+    .map(|_| ())
+    .map_err(|e| format!("Failed to save message: {}", e))
 }
 
 #[tauri::command]
@@ -361,7 +383,8 @@ pub async fn get_chat_messages(chat_id: String) -> Result<Vec<ChatMessage>, Stri
             id: Some(m.id),
             role: m.role,
             content: m.content,
-            is_pinned: m.is_pinned,
+            is_pinned: Some(m.is_pinned),
+            system_prompt_type: m.system_prompt_type,
         })
         .collect())
 }
@@ -456,7 +479,7 @@ pub async fn import_chat(file_path: String) -> Result<String, String> {
     
     // Import messages using the chat ID from the database
     for msg in chat_export.chat.messages {
-        db.add_message(&chat.id, &msg.role, &msg.content, msg.is_pinned)
+        db.add_message(&chat.id, &msg.role, &msg.content, msg.is_pinned, None)
             .map_err(|e| format!("Failed to create message: {}", e))?;
     }
     

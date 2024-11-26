@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use rusqlite::{Connection, Result};
+use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -20,6 +20,7 @@ pub struct Message {
     pub content: String,
     pub created_at: DateTime<Utc>,
     pub is_pinned: bool,
+    pub system_prompt_type: Option<String>,
 }
 
 pub struct Database {
@@ -53,12 +54,13 @@ impl Database {
                 content TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 is_pinned INTEGER NOT NULL DEFAULT 0,
+                system_prompt_type TEXT,
                 FOREIGN KEY (chat_id) REFERENCES chats (id) ON DELETE CASCADE
             )",
             [],
         )?;
 
-        // Add is_pinned column to existing messages table if it doesn't exist
+        // Add is_pinned column if it doesn't exist
         let columns: String = conn
             .query_row(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='messages'",
@@ -69,6 +71,14 @@ impl Database {
         if !columns.to_lowercase().contains("is_pinned") {
             conn.execute(
                 "ALTER TABLE messages ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
+        }
+
+        // Add system_prompt_type column if it doesn't exist
+        if !columns.to_lowercase().contains("system_prompt_type") {
+            conn.execute(
+                "ALTER TABLE messages ADD COLUMN system_prompt_type TEXT",
                 [],
             )?;
         }
@@ -88,7 +98,14 @@ impl Database {
         Ok(())
     }
 
-    pub fn add_message(&mut self, chat_id: &str, role: &str, content: &str, is_pinned: bool) -> Result<Message> {
+    pub fn add_message(
+        &mut self,
+        chat_id: &str,
+        role: &str,
+        content: &str,
+        is_pinned: bool,
+        system_prompt_type: Option<String>,
+    ) -> Result<Message> {
         let message = Message {
             id: Uuid::new_v4().to_string(),
             chat_id: chat_id.to_string(),
@@ -96,25 +113,27 @@ impl Database {
             content: content.to_string(),
             created_at: Utc::now(),
             is_pinned,
+            system_prompt_type,
         };
 
         self.conn.execute(
-            "INSERT INTO messages (id, chat_id, role, content, created_at, is_pinned)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            (
+            "INSERT INTO messages (id, chat_id, role, content, created_at, is_pinned, system_prompt_type)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
                 &message.id,
                 &message.chat_id,
                 &message.role,
                 &message.content,
                 &message.created_at.to_rfc3339(),
                 message.is_pinned as i32,
-            ),
+                message.system_prompt_type.as_deref().unwrap_or_default(),
+            ],
         )?;
 
         // Update the chat's updated_at timestamp
         self.conn.execute(
             "UPDATE chats SET updated_at = ?1 WHERE id = ?2",
-            (&message.created_at.to_rfc3339(), &message.chat_id),
+            params![Utc::now().to_rfc3339(), chat_id],
         )?;
 
         Ok(message)
@@ -183,29 +202,27 @@ impl Database {
 
     pub fn get_chat_messages(&self, chat_id: &str) -> Result<Vec<Message>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, chat_id, role, content, created_at, is_pinned
+            "SELECT id, chat_id, role, content, created_at, is_pinned, system_prompt_type
              FROM messages
              WHERE chat_id = ?1
              ORDER BY created_at ASC",
         )?;
 
-        let message_iter = stmt.query_map([chat_id], |row| {
-            Ok(Message {
-                id: row.get(0)?,
-                chat_id: row.get(1)?,
-                role: row.get(2)?,
-                content: row.get(3)?,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?)
-                    .unwrap()
-                    .with_timezone(&Utc),
-                is_pinned: row.get::<_, i32>(5)? != 0,
-            })
-        })?;
-
-        let mut messages = Vec::new();
-        for message in message_iter {
-            messages.push(message?);
-        }
+        let messages = stmt
+            .query_map([chat_id], |row| {
+                Ok(Message {
+                    id: row.get(0)?,
+                    chat_id: row.get(1)?,
+                    role: row.get(2)?,
+                    content: row.get(3)?,
+                    created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(4)?)
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    is_pinned: row.get::<_, i32>(5)? != 0,
+                    system_prompt_type: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(messages)
     }
