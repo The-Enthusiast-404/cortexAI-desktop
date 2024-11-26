@@ -25,6 +25,7 @@ import {
   Sun,
   Bot,
   User,
+  Globe,
 } from "lucide-solid";
 import ContextIndicator from "./ContextIndicator";
 import SearchResults from "./SearchResults";
@@ -93,6 +94,7 @@ export default function Chat(props: ChatProps) {
   });
 
   const [searchResults, setSearchResults] = createSignal<SearchResult[]>([]);
+  const [isWebSearchEnabled, setIsWebSearchEnabled] = createSignal(false);
 
   let messagesEndRef: HTMLDivElement | undefined;
   const scrollToBottom = () => {
@@ -212,11 +214,8 @@ export default function Chat(props: ChatProps) {
       setIsGenerating(true);
       setError(undefined);
 
-      // Perform web search for relevant queries
-      if (
-        userInput.toLowerCase().includes("search") ||
-        userInput.includes("?")
-      ) {
+      // Perform web search if enabled
+      if (isWebSearchEnabled()) {
         console.log("Performing web search for:", userInput);
         try {
           const searchResponse = await invoke<SearchResponse>("search", {
@@ -395,7 +394,7 @@ Please provide a detailed response that:
                 class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
                 onClick={() => setShowSettings(!showSettings())}
               >
-                <Settings class="h-4 w-4" />
+                <Settings class="h-4 w-4 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white" />
               </Button.Root>
             </div>
           </div>
@@ -491,35 +490,44 @@ Please provide a detailed response that:
       <div class="flex-none border-t border-chat-border-light dark:border-chat-border-dark bg-chat-light/80 dark:bg-chat-darker/80 backdrop-blur supports-[backdrop-filter]:bg-chat-light/60 dark:supports-[backdrop-filter]:bg-chat-darker/60">
         <form onSubmit={sendMessage} class="max-w-3xl mx-auto p-4">
           <div class="relative flex items-center">
+            <button
+              type="button"
+              onClick={() => setIsWebSearchEnabled(!isWebSearchEnabled())}
+              class={`absolute left-2 p-2 rounded-lg transition-colors ${
+                isWebSearchEnabled()
+                  ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800"
+                  : "hover:bg-gray-100 text-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white"
+              }`}
+              title={
+                isWebSearchEnabled()
+                  ? "Web search enabled"
+                  : "Web search disabled"
+              }
+            >
+              <Globe size={20} />
+            </button>
             <input
               type="text"
               value={currentInput()}
               onInput={(e) => setCurrentInput(e.currentTarget.value)}
               placeholder="Type your message..."
-              class="w-full pl-4 pr-12 py-3 rounded-xl border border-chat-border-light dark:border-chat-border-dark
-                     bg-chat-input-light dark:bg-chat-input-dark text-gray-900 dark:text-white
-                     focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400
-                     disabled:bg-gray-50 dark:disabled:bg-gray-800
-                     placeholder-gray-400 dark:placeholder-gray-500
-                     transition-all"
+              class="w-full pl-12 pr-24 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
               disabled={isGenerating()}
             />
-            <div class="absolute right-2 flex items-center">
-              <Button.Root
-                type="submit"
-                disabled={isGenerating()}
-                class="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300
-                       disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-500
-                       transition-colors rounded-lg"
+            <Button.Root
+              type="submit"
+              disabled={isGenerating()}
+              class="absolute right-2 p-2 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white
+                     disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-300
+                     transition-colors rounded-lg"
+            >
+              <Show
+                when={!isGenerating()}
+                fallback={<Loader class="w-5 h-5 animate-spin" />}
               >
-                <Show
-                  when={!isGenerating()}
-                  fallback={<Loader class="w-5 h-5 animate-spin" />}
-                >
-                  <Send class="w-5 h-5" />
-                </Show>
-              </Button.Root>
-            </div>
+                <Send class="w-5 h-5" />
+              </Show>
+            </Button.Root>
           </div>
 
           {/* Optional typing indicator */}
