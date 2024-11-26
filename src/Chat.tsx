@@ -29,6 +29,8 @@ import {
 } from "lucide-solid";
 import ContextIndicator from "./ContextIndicator";
 import SearchResults from "./SearchResults";
+import SystemPromptSelector from "./SystemPromptSelector";
+import { predefinedPrompts } from "./SystemPrompts";
 
 interface Chat {
   id: string;
@@ -95,6 +97,29 @@ export default function Chat(props: ChatProps) {
 
   const [searchResults, setSearchResults] = createSignal<SearchResult[]>([]);
   const [isWebSearchEnabled, setIsWebSearchEnabled] = createSignal(false);
+
+  const [selectedPromptId, setSelectedPromptId] = createSignal("general");
+  const [customPrompt, setCustomPrompt] = createSignal("");
+  const [activeSystemPrompt, setActiveSystemPrompt] = createSignal("");
+
+  const getCurrentSystemPrompt = () => {
+    if (activeSystemPrompt()) return activeSystemPrompt();
+    const defaultPrompt = predefinedPrompts.find((p) => p.id === "general");
+    return defaultPrompt?.prompt || "";
+  };
+
+  const handleApplyPrompt = () => {
+    const newPrompt =
+      customPrompt() ||
+      predefinedPrompts.find((p) => p.id === selectedPromptId())?.prompt ||
+      "";
+    console.log(
+      "Applying new system prompt:",
+      newPrompt.substring(0, 100) + "..."
+    ); // Debug log
+    setActiveSystemPrompt(newPrompt);
+    setShowSettings(false);
+  };
 
   let messagesEndRef: HTMLDivElement | undefined;
   const scrollToBottom = () => {
@@ -182,16 +207,22 @@ export default function Chat(props: ChatProps) {
     return messages().filter((msg) => msg.isPinned);
   };
 
-  const sendMessage = async (e: Event) => {
-    e.preventDefault();
+  const sendMessage = async (e?: Event) => {
+    e?.preventDefault();
     const userInput = currentInput().trim();
 
     if (!userInput || isGenerating()) return;
 
-    try {
-      let currentChatId = props.chatId;
+    let currentChatId = props.chatId;
 
-      // Create a new chat if needed
+    try {
+      const systemPrompt = getCurrentSystemPrompt();
+      console.log("Using system prompt:", {
+        id: selectedPromptId(),
+        customPrompt: customPrompt() ? "present" : "none",
+        activePrompt: systemPrompt.substring(0, 100) + "...",
+      });
+
       if (!currentChatId) {
         const chat = await invoke<Chat>("create_chat", {
           title: userInput.slice(0, 50),
@@ -261,6 +292,8 @@ Please provide a detailed response that:
             ],
             params: modelParams(),
             chatId: currentChatId,
+            systemPrompt: systemPrompt,
+            webSearch: isWebSearchEnabled(),
           });
         } catch (searchError) {
           console.error("Search failed:", searchError);
@@ -276,6 +309,7 @@ Please provide a detailed response that:
           messages: [...messages(), userMessage],
           params: modelParams(),
           chatId: currentChatId,
+          systemPrompt: systemPrompt,
         });
       }
     } catch (error) {
@@ -404,9 +438,59 @@ Please provide a detailed response that:
 
       {/* Settings Panel */}
       <Show when={showSettings()}>
-        <div class="flex-none border-b border-chat-border-light dark:border-chat-border-dark animate-slideDown bg-chat-light dark:bg-chat-darker">
-          <div class="max-w-3xl mx-auto w-full">
-            <ChatSettings onParamsChange={setModelParams} />
+        <div class="fixed inset-0 bg-black bg-opacity-50 z-50">
+          <div class="absolute right-0 top-0 h-full w-96 bg-white shadow-lg overflow-y-auto">
+            <div class="p-4">
+              <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-medium">Chat Settings</h2>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  class="text-gray-500 hover:text-gray-700"
+                >
+                  <span class="sr-only">Close</span>
+                  <svg
+                    class="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <div class="space-y-6">
+                <div>
+                  <h3 class="text-md font-medium mb-3">System Prompt</h3>
+                  <SystemPromptSelector
+                    selectedPromptId={selectedPromptId()}
+                    onSelect={setSelectedPromptId}
+                    customPrompt={customPrompt()}
+                    onCustomPromptChange={setCustomPrompt}
+                  />
+                  <div class="mt-4">
+                    <button
+                      onClick={handleApplyPrompt}
+                      class="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      Apply System Prompt
+                    </button>
+                  </div>
+                </div>
+
+                <ChatSettings
+                  modelParams={modelParams()}
+                  onParamsChange={setModelParams}
+                  isWebSearchEnabled={isWebSearchEnabled()}
+                  onWebSearchChange={setIsWebSearchEnabled}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </Show>

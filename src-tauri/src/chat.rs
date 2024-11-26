@@ -33,6 +33,7 @@ pub struct ChatRequest {
     pub stream: bool,
     #[serde(flatten)]
     pub params: ModelParams,
+    pub system: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -186,12 +187,23 @@ pub async fn chat(
     mut messages: Vec<ChatMessage>,
     params: ModelParams,
     chat_id: Option<String>,
+    system_prompt: Option<String>,
 ) -> Result<(), String> {
     let client = Client::new();
     let url = "http://localhost:11434/api/chat";
 
     // Initialize context manager
     let mut context = ChatContext::new(params.max_tokens as usize);
+
+    // Add system prompt if provided
+    if let Some(system) = &system_prompt {
+        context.add_message(ChatMessage {
+            id: None,
+            role: "system".to_string(),
+            content: system.clone(),
+            is_pinned: false,
+        });
+    }
 
     // Load existing conversation if chat_id exists
     if let Some(chat_id) = &chat_id {
@@ -225,6 +237,7 @@ pub async fn chat(
         messages: context.get_messages().clone(),
         stream: true,
         params,
+        system: system_prompt,
     };
 
     // Save user's message if chat_id is provided
