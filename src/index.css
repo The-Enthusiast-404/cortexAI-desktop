@@ -2,15 +2,101 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    /* Base colors - Now using a more neutral primary palette */
+    --color-primary-50: 249 250 251;
+    --color-primary-100: 243 244 246;
+    --color-primary-200: 229 231 235;
+    --color-primary-300: 209 213 219;
+    --color-primary-400: 156 163 175;
+    --color-primary-500: 107 114 128;
+    --color-primary-600: 75 85 99;
+    --color-primary-700: 55 65 81;
+    --color-primary-800: 31 41 55;
+    --color-primary-900: 17 24 39;
+
+    /* Semantic tokens - Dark theme by default */
+    --color-primary: var(--color-primary-800);
+    --color-primary-dark: var(--color-primary-900);
+    --color-accent: var(--color-primary-600);
+    --color-accent-dark: var(--color-primary-700);
+
+    --color-surface: 31 41 55;
+    --color-surface-dark: 17 24 39;
+    --color-surface-secondary: 55 65 81;
+    --color-surface-secondary-dark: 75 85 99;
+
+    --color-text: 243 244 246;
+    --color-text-dark: 229 231 235;
+    --color-text-secondary: 156 163 175;
+    --color-text-secondary-dark: 209 213 219;
+
+    --color-divider: 55 65 81;
+    --color-divider-dark: 75 85 99;
+
+    --color-input: 31 41 55;
+    --color-input-dark: 55 65 81;
+
+    --color-hover: 55 65 81;
+    --color-hover-dark: 75 85 99;
+
+    --color-user: 75 85 99;
+    --color-user-dark: 55 65 81;
+    --color-assistant: 55 65 81;
+    --color-assistant-dark: 31 41 55;
+
+    /* Animation durations */
+    --transition-fast: 150ms;
+    --transition-normal: 250ms;
+    --transition-slow: 350ms;
+  }
+
+  /* Light theme overrides */
+  .light {
+    --color-primary: var(--color-primary-200);
+    --color-primary-dark: var(--color-primary-300);
+    --color-accent: var(--color-primary-400);
+    --color-accent-dark: var(--color-primary-500);
+
+    --color-surface: 255 255 255;
+    --color-surface-dark: 249 250 251;
+    --color-surface-secondary: 243 244 246;
+    --color-surface-secondary-dark: 229 231 235;
+
+    --color-text: 17 24 39;
+    --color-text-dark: 31 41 55;
+    --color-text-secondary: 107 114 128;
+    --color-text-secondary-dark: 75 85 99;
+
+    --color-divider: 229 231 235;
+    --color-divider-dark: 209 213 219;
+
+    --color-input: 255 255 255;
+    --color-input-dark: 249 250 251;
+
+    --color-hover: 243 244 246;
+    --color-hover-dark: 229 231 235;
+  }
+}
+
+/* Base transitions */
+.transition-theme {
+  transition-property: color, background-color, border-color, outline-color,
+    text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: var(--transition-normal);
+}
+
 /* Hide scrollbar for Chrome, Safari and Opera */
 .no-scrollbar::-webkit-scrollbar {
-    display: none;
+  display: none;
 }
 
 /* Hide scrollbar for IE, Edge and Firefox */
 .no-scrollbar {
-    -ms-overflow-style: none; /* IE and Edge */
-    scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }
 
 /* Optional: If you want to completely disable scrollbar */
@@ -18,30 +104,30 @@
 
 /* For Firefox */
 * {
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--color-text-secondary) / 0.5) transparent;
 }
 
 /* For Webkit browsers */
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-    background: transparent;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-    background-color: rgba(156, 163, 175, 0.5);
-    border-radius: 20px;
+  background-color: rgb(var(--color-text-secondary) / 0.5);
+  border-radius: 20px;
 }
 
 /* Dark mode scrollbar */
 .dark ::-webkit-scrollbar-thumb {
-    background-color: rgba(75, 85, 99, 0.5);
+  background-color: rgb(var(--color-text-secondary-dark) / 0.5);
 }
 
 body {
-    @apply antialiased;
+  @apply antialiased bg-surface text-text transition-theme;
 }
