@@ -11,8 +11,6 @@ export interface ModelParams {
 interface ChatSettingsProps {
   modelParams: ModelParams;
   onParamsChange: (params: ModelParams) => void;
-  isWebSearchEnabled: boolean;
-  onWebSearchChange: (enabled: boolean) => void;
   searchMode: string;
   onSearchModeChange: (mode: string) => void;
 }
@@ -116,24 +114,8 @@ export default function ChatSettings(props: ChatSettingsProps) {
       </div>
 
       {/* Web Search Settings */}
-      <div class="space-y-2">
-        <div class="flex items-center">
-          <input
-            type="checkbox"
-            id="web-search"
-            checked={props.isWebSearchEnabled}
-            onChange={(e) => props.onWebSearchChange(e.currentTarget.checked)}
-            class="h-4 w-4 text-blue-600"
-          />
-          <label
-            for="web-search"
-            class="ml-2 text-sm font-medium text-gray-700"
-          >
-            Enable Web Search
-          </label>
-        </div>
-
-        <Show when={props.isWebSearchEnabled}>
+      <Show when={props.searchMode !== ""}>
+        <div class="space-y-2">
           <div class="mt-2">
             <label class="block text-sm font-medium text-gray-700">
               Search Mode
@@ -147,8 +129,8 @@ export default function ChatSettings(props: ChatSettingsProps) {
               <option value="academic">Academic</option>
             </select>
           </div>
-        </Show>
-      </div>
+        </div>
+      </Show>
     </div>
   );
 }

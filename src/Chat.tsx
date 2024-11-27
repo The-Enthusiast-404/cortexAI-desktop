@@ -108,16 +108,26 @@ export default function Chat(props: ChatProps) {
   });
 
   const [searchResults, setSearchResults] = createSignal<SearchResult[]>([]);
-  const [isWebSearchEnabled, setIsWebSearchEnabled] = createSignal(false);
-
+  const [searchMode, setSearchMode] = createSignal<string>("");
   const [followUps, setFollowUps] = createSignal<FollowUpSuggestion[]>([]);
-  const [searchMode, setSearchMode] = createSignal<string>("general");
-
   const [mode, setMode] = createSignal("offline");
 
   const getCurrentMode = () => {
     return focusModes.find((m) => m.id === mode()) || focusModes[0];
   };
+
+  const isWebSearchEnabled = () => {
+    return getCurrentMode().capabilities.webSearch;
+  };
+
+  createEffect(() => {
+    // Update search mode based on focus mode capabilities
+    if (!isWebSearchEnabled()) {
+      setSearchMode("");
+    } else if (searchMode() === "") {
+      setSearchMode("general");
+    }
+  });
 
   const getCurrentSystemPrompt = () => {
     return getCurrentMode().systemPrompt;
@@ -251,9 +261,7 @@ export default function Chat(props: ChatProps) {
       setError(undefined);
 
       // Perform web search if enabled
-      const shouldUseWebSearch =
-        currentMode.capabilities.webSearch && isWebSearchEnabled();
-      const shouldUseAcademicSearch = currentMode.capabilities.academicSearch;
+      const shouldUseWebSearch = isWebSearchEnabled();
 
       if (shouldUseWebSearch) {
         console.log("Performing web search for:", userInput);
@@ -509,8 +517,6 @@ Please provide a detailed response that:
                 <ChatSettings
                   modelParams={modelParams()}
                   onParamsChange={setModelParams}
-                  isWebSearchEnabled={isWebSearchEnabled()}
-                  onWebSearchChange={setIsWebSearchEnabled}
                   searchMode={searchMode()}
                   onSearchModeChange={setSearchMode}
                 />
