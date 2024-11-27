@@ -3,22 +3,50 @@ import scrollbar from "tailwind-scrollbar";
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./src/**/*.{js,jsx,ts,tsx}"],
-  darkMode: "class", // Enable class-based dark mode
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
-        "chat-dark": "#1a1b1e",
-        "chat-darker": "#141517",
-        "chat-light": "#ffffff",
-        "chat-lighter": "#f9fafb",
-        "chat-border": {
-          light: "#e5e7eb",
-          dark: "#2d2d2d",
-        },
-        "chat-input": {
-          light: "#ffffff",
-          dark: "#2d2d2d",
-        },
+        primary: "rgb(var(--color-primary) / <alpha-value>)",
+        "primary-dark": "rgb(var(--color-primary-dark) / <alpha-value>)",
+        accent: "rgb(var(--color-accent) / <alpha-value>)",
+        "accent-dark": "rgb(var(--color-accent-dark) / <alpha-value>)",
+
+        surface: "rgb(var(--color-surface) / <alpha-value>)",
+        "surface-dark": "rgb(var(--color-surface-dark) / <alpha-value>)",
+        "surface-secondary":
+          "rgb(var(--color-surface-secondary) / <alpha-value>)",
+        "surface-secondary-dark":
+          "rgb(var(--color-surface-secondary-dark) / <alpha-value>)",
+
+        text: "rgb(var(--color-text) / <alpha-value>)",
+        "text-dark": "rgb(var(--color-text-dark) / <alpha-value>)",
+        "text-secondary": "rgb(var(--color-text-secondary) / <alpha-value>)",
+        "text-secondary-dark":
+          "rgb(var(--color-text-secondary-dark) / <alpha-value>)",
+
+        divider: "rgb(var(--color-divider) / <alpha-value>)",
+        "divider-dark": "rgb(var(--color-divider-dark) / <alpha-value>)",
+
+        input: "rgb(var(--color-input) / <alpha-value>)",
+        "input-dark": "rgb(var(--color-input-dark) / <alpha-value>)",
+
+        hover: "rgb(var(--color-hover) / <alpha-value>)",
+        "hover-dark": "rgb(var(--color-hover-dark) / <alpha-value>)",
+
+        user: "rgb(var(--color-user) / <alpha-value>)",
+        "user-dark": "rgb(var(--color-user-dark) / <alpha-value>)",
+        assistant: "rgb(var(--color-assistant) / <alpha-value>)",
+        "assistant-dark": "rgb(var(--color-assistant-dark) / <alpha-value>)",
+      },
+      transitionProperty: {
+        theme:
+          "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke",
+      },
+      transitionDuration: {
+        fast: "var(--transition-fast)",
+        normal: "var(--transition-normal)",
+        slow: "var(--transition-slow)",
       },
       keyframes: {
         slideDown: {

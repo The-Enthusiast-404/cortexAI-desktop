@@ -97,9 +97,7 @@ export default function Chat(props: ChatProps) {
   const [showSettings, setShowSettings] = createSignal(false);
   const [error, setError] = createSignal<string>();
   const [isExporting, setIsExporting] = createSignal(false);
-  const [isDark, setIsDark] = createSignal(
-    window.matchMedia("(prefers-color-scheme: dark)").matches
-  );
+  const [isDark, setIsDark] = createSignal(true);
 
   const [modelParams, setModelParams] = createSignal<ModelParams>({
     temperature: 0.7,
@@ -110,16 +108,26 @@ export default function Chat(props: ChatProps) {
   });
 
   const [searchResults, setSearchResults] = createSignal<SearchResult[]>([]);
-  const [isWebSearchEnabled, setIsWebSearchEnabled] = createSignal(false);
-
+  const [searchMode, setSearchMode] = createSignal<string>("");
   const [followUps, setFollowUps] = createSignal<FollowUpSuggestion[]>([]);
-  const [searchMode, setSearchMode] = createSignal<string>("general");
-
   const [mode, setMode] = createSignal("offline");
 
   const getCurrentMode = () => {
     return focusModes.find((m) => m.id === mode()) || focusModes[0];
   };
+
+  const isWebSearchEnabled = () => {
+    return getCurrentMode().capabilities.webSearch;
+  };
+
+  createEffect(() => {
+    // Update search mode based on focus mode capabilities
+    if (!isWebSearchEnabled()) {
+      setSearchMode("");
+    } else if (searchMode() === "") {
+      setSearchMode("general");
+    }
+  });
 
   const getCurrentSystemPrompt = () => {
     return getCurrentMode().systemPrompt;
@@ -253,9 +261,7 @@ export default function Chat(props: ChatProps) {
       setError(undefined);
 
       // Perform web search if enabled
-      const shouldUseWebSearch =
-        currentMode.capabilities.webSearch && isWebSearchEnabled();
-      const shouldUseAcademicSearch = currentMode.capabilities.academicSearch;
+      const shouldUseWebSearch = isWebSearchEnabled();
 
       if (shouldUseWebSearch) {
         console.log("Performing web search for:", userInput);
@@ -413,9 +419,11 @@ Please provide a detailed response that:
   // Fixed dark mode effect
   createEffect(() => {
     if (isDark()) {
+      document.documentElement.classList.remove("light");
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
+      document.documentElement.classList.add("light");
     }
   });
 
@@ -429,20 +437,20 @@ Please provide a detailed response that:
   });
 
   return (
-    <div class="flex flex-col h-full bg-chat-lighter dark:bg-chat-dark">
+    <div class="flex flex-col h-full bg-primary dark:bg-primary-dark transition-colors duration-300">
       {/* Header */}
-      <div class="sticky top-0 z-10 flex-none px-4 py-3 border-b border-chat-border-light dark:border-chat-border-dark bg-chat-light/80 dark:bg-chat-darker/80 backdrop-blur supports-[backdrop-filter]:bg-chat-light/60 dark:supports-[backdrop-filter]:bg-chat-darker/60">
+      <div class="sticky top-0 z-10 flex-none px-4 py-3 border-b border-divider dark:border-divider-dark bg-surface/80 dark:bg-surface-dark/80 backdrop-blur supports-[backdrop-filter]:bg-surface/60 dark:supports-[backdrop-filter]:bg-surface-dark/60 transition-all duration-300">
         <div class="flex items-center justify-between max-w-3xl mx-auto">
           <div class="flex items-center gap-3">
-            <MessageSquare class="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            <h2 class="font-medium text-gray-900 dark:text-white">
+            <MessageSquare class="w-5 h-5 text-accent dark:text-accent-dark transition-colors" />
+            <h2 class="font-medium text-text dark:text-text-dark transition-colors">
               {props.modelName}
             </h2>
           </div>
           <div class="flex items-center gap-2">
             <Button.Root
               onClick={() => setIsDark(!isDark())}
-              class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors"
+              class="p-2 text-text-secondary dark:text-text-secondary-dark hover:bg-hover dark:hover:bg-hover-dark rounded-full transition-all duration-300"
             >
               <Show when={isDark()} fallback={<Moon class="w-5 h-5" />}>
                 <Sun class="w-5 h-5" />
@@ -509,8 +517,6 @@ Please provide a detailed response that:
                 <ChatSettings
                   modelParams={modelParams()}
                   onParamsChange={setModelParams}
-                  isWebSearchEnabled={isWebSearchEnabled()}
-                  onWebSearchChange={setIsWebSearchEnabled}
                   searchMode={searchMode()}
                   onSearchModeChange={setSearchMode}
                 />
@@ -539,34 +545,37 @@ Please provide a detailed response that:
         <div class="max-w-3xl mx-auto px-4">
           <For each={messages()}>
             {(message, index) => (
-              <div class="py-6 first:pt-8 border-b border-chat-border-light dark:border-chat-border-dark animate-messageIn">
-                <div class="flex gap-4 items-start">
-                  <div class="flex flex-col items-center gap-2">
+              <div class="py-8 first:pt-8 border-b border-divider dark:border-divider-dark transition-colors duration-300 animate-messageIn">
+                <div class="flex gap-6 items-start">
+                  <div class="flex flex-col items-center gap-3">
                     <div
-                      class={`flex-none p-2 rounded-full ${
+                      class={`flex-none p-3 rounded-xl shadow-sm transition-colors duration-300 ${
                         message.role === "user"
-                          ? "bg-blue-600 dark:bg-blue-500"
-                          : "bg-green-600 dark:bg-green-500"
+                          ? "bg-user dark:bg-user-dark"
+                          : "bg-assistant dark:bg-assistant-dark"
                       }`}
                     >
                       {message.role === "user" ? (
-                        <User class="w-4 h-4 text-white" />
+                        <User class="w-5 h-5 text-text-dark dark:text-text" />
                       ) : (
-                        <Bot class="w-4 h-4 text-white" />
+                        <Bot class="w-5 h-5 text-text-dark dark:text-text" />
                       )}
                     </div>
                     {message.systemPromptType && (
-                      <div class="text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                      <div class="text-xs px-3 py-1.5 rounded-lg bg-surface-secondary dark:bg-surface-secondary-dark text-text-secondary dark:text-text-secondary-dark transition-colors duration-300 border border-divider dark:border-divider-dark">
                         {message.systemPromptType}
                       </div>
                     )}
                   </div>
-                  <div class="flex-1 min-w-0">
+                  <div class="flex-1 min-w-0 space-y-2">
+                    <div class="text-sm text-text-secondary dark:text-text-secondary-dark">
+                      {message.role === "user" ? "You" : "Assistant"}
+                    </div>
                     <div
-                      class={`prose dark:prose-invert max-w-none ${
+                      class={`prose dark:prose-invert max-w-none transition-colors duration-300 ${
                         message.role === "user"
-                          ? "text-gray-900 dark:text-white"
-                          : "text-gray-900 dark:text-white"
+                          ? "text-text dark:text-text-dark"
+                          : "text-text dark:text-text-dark"
                       }`}
                     >
                       <MessageContent
@@ -583,13 +592,16 @@ Please provide a detailed response that:
           </For>
 
           <Show when={currentResponse()}>
-            <div class="py-6 border-b border-chat-border-light dark:border-chat-border-dark animate-messageIn">
-              <div class="flex gap-4 items-start">
-                <div class="flex-none p-2 rounded-full bg-green-600 dark:bg-green-500">
-                  <Bot class="w-4 h-4 text-white" />
+            <div class="py-8 border-b border-divider dark:border-divider-dark transition-colors duration-300 animate-messageIn">
+              <div class="flex gap-6 items-start">
+                <div class="flex-none p-3 rounded-xl shadow-sm bg-assistant dark:bg-assistant-dark transition-colors duration-300">
+                  <Bot class="w-5 h-5 text-text-dark dark:text-text" />
                 </div>
-                <div class="flex-1 min-w-0">
-                  <div class="prose dark:prose-invert max-w-none text-gray-900 dark:text-white">
+                <div class="flex-1 min-w-0 space-y-2">
+                  <div class="text-sm text-text-secondary dark:text-text-secondary-dark">
+                    Assistant
+                  </div>
+                  <div class="prose dark:prose-invert max-w-none text-text dark:text-text-dark">
                     <MessageContent content={currentResponse()} />
                   </div>
                 </div>
@@ -624,7 +636,7 @@ Please provide a detailed response that:
       </div>
 
       {/* Input Form */}
-      <div class="flex-none border-t border-chat-border-light dark:border-chat-border-dark bg-chat-light/80 dark:bg-chat-darker/80 backdrop-blur supports-[backdrop-filter]:bg-chat-light/60 dark:supports-[backdrop-filter]:bg-chat-darker/60">
+      <div class="flex-none border-t border-divider dark:border-divider-dark bg-surface/80 dark:bg-surface-dark/80 backdrop-blur supports-[backdrop-filter]:bg-surface/60 dark:supports-[backdrop-filter]:bg-surface-dark/60 transition-all duration-300">
         <form onSubmit={sendMessage} class="max-w-3xl mx-auto p-4">
           <div class="relative flex items-center gap-2 min-h-[48px]">
             <div class="flex-none z-[1]">
@@ -654,7 +666,7 @@ Please provide a detailed response that:
               }}
               onFocus={() => console.log("Input focused")}
               placeholder="Type your message..."
-              class="chat-input flex-1 min-h-[48px] px-4 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 z-[2] text-gray-900 dark:text-white !text-base !font-normal"
+              class="chat-input flex-1 min-h-[48px] px-4 py-3 bg-input dark:bg-input-dark rounded-xl border border-divider dark:border-divider-dark focus:outline-none focus:ring-2 focus:ring-accent dark:focus:ring-accent-dark z-[2] text-text dark:text-text-dark !text-base !font-normal transition-all duration-300"
             />
             <Button.Root
               type="submit"
