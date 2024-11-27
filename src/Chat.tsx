@@ -30,11 +30,10 @@ import {
 } from "lucide-solid";
 import ContextIndicator from "./ContextIndicator";
 import SearchResults from "./SearchResults";
-import SystemPromptSelector from "./SystemPromptSelector";
 import FollowUpSuggestions from "./FollowUpSuggestions";
-import { predefinedPrompts } from "./SystemPrompts";
 import { generateAcademicPrompt } from "./AcademicPrompts";
 import FocusMode from "./FocusMode";
+import { focusModes } from "./FocusModeConfig";
 
 interface Chat {
   id: string;
@@ -113,32 +112,17 @@ export default function Chat(props: ChatProps) {
   const [searchResults, setSearchResults] = createSignal<SearchResult[]>([]);
   const [isWebSearchEnabled, setIsWebSearchEnabled] = createSignal(false);
 
-  const [selectedPromptId, setSelectedPromptId] = createSignal("general");
-  const [customPrompt, setCustomPrompt] = createSignal("");
-  const [activeSystemPrompt, setActiveSystemPrompt] = createSignal("");
-
   const [followUps, setFollowUps] = createSignal<FollowUpSuggestion[]>([]);
   const [searchMode, setSearchMode] = createSignal<string>("general");
 
   const [mode, setMode] = createSignal("offline");
 
-  const getCurrentSystemPrompt = () => {
-    if (activeSystemPrompt()) return activeSystemPrompt();
-    const defaultPrompt = predefinedPrompts.find((p) => p.id === "general");
-    return defaultPrompt?.prompt || "";
+  const getCurrentMode = () => {
+    return focusModes.find((m) => m.id === mode()) || focusModes[0];
   };
 
-  const handleApplyPrompt = () => {
-    const newPrompt =
-      customPrompt() ||
-      predefinedPrompts.find((p) => p.id === selectedPromptId())?.prompt ||
-      "";
-    console.log(
-      "Applying new system prompt:",
-      newPrompt.substring(0, 100) + "..."
-    ); // Debug log
-    setActiveSystemPrompt(newPrompt);
-    setShowSettings(false);
+  const getCurrentSystemPrompt = () => {
+    return getCurrentMode().systemPrompt;
   };
 
   const handleFollowUpSelect = (suggestion: string) => {
@@ -246,14 +230,12 @@ export default function Chat(props: ChatProps) {
     let currentChatId = props.chatId;
 
     try {
-      const systemPrompt = getCurrentSystemPrompt();
-      const systemPromptType = customPrompt() ? "custom" : selectedPromptId();
+      const currentMode = getCurrentMode();
+      const systemPrompt = currentMode.systemPrompt;
 
       console.log("Using system prompt:", {
-        id: selectedPromptId(),
-        type: systemPromptType,
-        customPrompt: customPrompt() ? "present" : "none",
-        activePrompt: systemPrompt.substring(0, 100) + "...",
+        id: currentMode.id,
+        prompt: systemPrompt.substring(0, 100) + "...",
       });
 
       // Create user message with system prompt type
@@ -262,7 +244,7 @@ export default function Chat(props: ChatProps) {
         role: "user",
         content: userInput,
         isPinned: false,
-        systemPromptType: systemPromptType,
+        systemPromptType: currentMode.id,
       };
 
       // Clear input and set generating state
@@ -271,7 +253,11 @@ export default function Chat(props: ChatProps) {
       setError(undefined);
 
       // Perform web search if enabled
-      if (isWebSearchEnabled()) {
+      const shouldUseWebSearch =
+        currentMode.capabilities.webSearch && isWebSearchEnabled();
+      const shouldUseAcademicSearch = currentMode.capabilities.academicSearch;
+
+      if (shouldUseWebSearch) {
         console.log("Performing web search for:", userInput);
         try {
           const searchResponse = await invoke<SearchResponse>("search", {
@@ -338,7 +324,7 @@ Please provide a detailed response that:
             params: modelParams(),
             chatId: currentChatId,
             systemPrompt: systemPrompt,
-            webSearch: isWebSearchEnabled(),
+            webSearch: shouldUseWebSearch,
           });
         } catch (searchError) {
           console.error("Search failed:", searchError);
@@ -355,7 +341,7 @@ Please provide a detailed response that:
           params: modelParams(),
           chatId: currentChatId,
           systemPrompt: systemPrompt,
-          systemPromptType: systemPromptType,
+          systemPromptType: currentMode.id,
         });
       }
     } catch (error) {
@@ -520,24 +506,6 @@ Please provide a detailed response that:
               </div>
 
               <div class="space-y-6">
-                <div>
-                  <h3 class="text-md font-medium mb-3">System Prompt</h3>
-                  <SystemPromptSelector
-                    selectedPromptId={selectedPromptId()}
-                    onSelect={setSelectedPromptId}
-                    customPrompt={customPrompt()}
-                    onCustomPromptChange={setCustomPrompt}
-                  />
-                  <div class="mt-4">
-                    <button
-                      onClick={handleApplyPrompt}
-                      class="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
-                    >
-                      Apply System Prompt
-                    </button>
-                  </div>
-                </div>
-
                 <ChatSettings
                   modelParams={modelParams()}
                   onParamsChange={setModelParams}
@@ -589,9 +557,7 @@ Please provide a detailed response that:
                     </div>
                     {message.systemPromptType && (
                       <div class="text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
-                        {message.systemPromptType === "custom"
-                          ? "Custom"
-                          : message.systemPromptType}
+                        {message.systemPromptType}
                       </div>
                     )}
                   </div>

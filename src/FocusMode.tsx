@@ -1,7 +1,6 @@
 import { Component, createSignal, Show } from "solid-js";
-import { FiTarget, FiMessageSquare } from "solid-icons/fi";
-import { IoBookOutline } from "solid-icons/io";
-import { TbWorldWww } from "solid-icons/tb";
+import { FiTarget } from "solid-icons/fi";
+import { focusModes } from "./FocusModeConfig";
 
 interface FocusModeProps {
   mode: string;
@@ -11,29 +10,8 @@ interface FocusModeProps {
 const FocusMode: Component<FocusModeProps> = (props) => {
   const [isOpen, setIsOpen] = createSignal(false);
 
-  const modes = [
-    {
-      id: "offline",
-      name: "Chat",
-      icon: FiMessageSquare,
-      description: "Default chat mode without web search",
-    },
-    {
-      id: "web",
-      name: "Internet",
-      icon: TbWorldWww,
-      description: "Search and browse the internet",
-    },
-    {
-      id: "academic",
-      name: "Academic",
-      icon: IoBookOutline,
-      description: "Research papers and scholarly content",
-    },
-  ];
-
   const getCurrentMode = () => {
-    return modes.find((m) => m.id === props.mode) || modes[0];
+    return focusModes.find((m) => m.id === props.mode) || focusModes[0];
   };
 
   return (
@@ -41,7 +19,7 @@ const FocusMode: Component<FocusModeProps> = (props) => {
       <Show when={isOpen()}>
         <div class="absolute bottom-full left-0 mb-2 w-64 bg-white dark:bg-gray-900 rounded-lg shadow-lg ring-1 ring-black ring-opacity-5 z-[1]">
           <div class="py-1">
-            {modes.map((mode) => (
+            {focusModes.map((mode) => (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
