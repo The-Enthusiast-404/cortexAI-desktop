@@ -26,12 +26,14 @@ import {
   Bot,
   User,
   Globe,
+  Sparkles,
 } from "lucide-solid";
 import ContextIndicator from "./ContextIndicator";
 import SearchResults from "./SearchResults";
-import SystemPromptSelector from "./SystemPromptSelector";
 import FollowUpSuggestions from "./FollowUpSuggestions";
-import { predefinedPrompts } from "./SystemPrompts";
+import { generateAcademicPrompt } from "./AcademicPrompts";
+import FocusMode from "./FocusMode";
+import { focusModes } from "./FocusModeConfig";
 
 interface Chat {
   id: string;
@@ -81,6 +83,10 @@ interface SearchResult {
   title: string;
   url: string;
   snippet: string;
+  source_type?: string;
+  authors?: string[];
+  publish_date?: string;
+  doi?: string;
 }
 
 export default function Chat(props: ChatProps) {
@@ -106,29 +112,17 @@ export default function Chat(props: ChatProps) {
   const [searchResults, setSearchResults] = createSignal<SearchResult[]>([]);
   const [isWebSearchEnabled, setIsWebSearchEnabled] = createSignal(false);
 
-  const [selectedPromptId, setSelectedPromptId] = createSignal("general");
-  const [customPrompt, setCustomPrompt] = createSignal("");
-  const [activeSystemPrompt, setActiveSystemPrompt] = createSignal("");
-
   const [followUps, setFollowUps] = createSignal<FollowUpSuggestion[]>([]);
+  const [searchMode, setSearchMode] = createSignal<string>("general");
 
-  const getCurrentSystemPrompt = () => {
-    if (activeSystemPrompt()) return activeSystemPrompt();
-    const defaultPrompt = predefinedPrompts.find((p) => p.id === "general");
-    return defaultPrompt?.prompt || "";
+  const [mode, setMode] = createSignal("offline");
+
+  const getCurrentMode = () => {
+    return focusModes.find((m) => m.id === mode()) || focusModes[0];
   };
 
-  const handleApplyPrompt = () => {
-    const newPrompt =
-      customPrompt() ||
-      predefinedPrompts.find((p) => p.id === selectedPromptId())?.prompt ||
-      "";
-    console.log(
-      "Applying new system prompt:",
-      newPrompt.substring(0, 100) + "..."
-    ); // Debug log
-    setActiveSystemPrompt(newPrompt);
-    setShowSettings(false);
+  const getCurrentSystemPrompt = () => {
+    return getCurrentMode().systemPrompt;
   };
 
   const handleFollowUpSelect = (suggestion: string) => {
@@ -236,14 +230,12 @@ export default function Chat(props: ChatProps) {
     let currentChatId = props.chatId;
 
     try {
-      const systemPrompt = getCurrentSystemPrompt();
-      const systemPromptType = customPrompt() ? "custom" : selectedPromptId();
+      const currentMode = getCurrentMode();
+      const systemPrompt = currentMode.systemPrompt;
 
       console.log("Using system prompt:", {
-        id: selectedPromptId(),
-        type: systemPromptType,
-        customPrompt: customPrompt() ? "present" : "none",
-        activePrompt: systemPrompt.substring(0, 100) + "...",
+        id: currentMode.id,
+        prompt: systemPrompt.substring(0, 100) + "...",
       });
 
       // Create user message with system prompt type
@@ -252,7 +244,7 @@ export default function Chat(props: ChatProps) {
         role: "user",
         content: userInput,
         isPinned: false,
-        systemPromptType: systemPromptType,
+        systemPromptType: currentMode.id,
       };
 
       // Clear input and set generating state
@@ -261,23 +253,47 @@ export default function Chat(props: ChatProps) {
       setError(undefined);
 
       // Perform web search if enabled
-      if (isWebSearchEnabled()) {
+      const shouldUseWebSearch =
+        currentMode.capabilities.webSearch && isWebSearchEnabled();
+      const shouldUseAcademicSearch = currentMode.capabilities.academicSearch;
+
+      if (shouldUseWebSearch) {
         console.log("Performing web search for:", userInput);
         try {
           const searchResponse = await invoke<SearchResponse>("search", {
             query: userInput,
+            mode: searchMode(),
           });
           console.log("Got search results:", searchResponse);
 
           // Create a context message from search results
           const searchContext = searchResponse.results
-            .map(
-              (result) => `[${result.title}](${result.url})\n${result.snippet}`
-            )
+            .map((result) => {
+              let citation = `[${result.title}](${result.url})\n${result.snippet}`;
+              // Add academic metadata if available
+              if (result.source_type === "academic") {
+                if (result.authors && result.authors.length > 0) {
+                  citation += `\nAuthors: ${result.authors.join(", ")}`;
+                }
+                if (result.publish_date) {
+                  citation += `\nPublished: ${result.publish_date}`;
+                }
+                if (result.doi) {
+                  citation += `\nDOI: ${result.doi}`;
+                }
+              }
+              return citation;
+            })
             .join("\n\n");
 
-          // Create a prompt that includes search results
-          const searchPrompt = `I want you to act as a helpful AI assistant. I will provide you with search results and a query. Your task is to analyze these search results and provide a comprehensive, well-structured response that answers the query. Include relevant citations to the sources.
+          // Create a mode-specific prompt
+          const searchPrompt =
+            searchMode() === "academic"
+              ? generateAcademicPrompt({
+                  query: userInput,
+                  searchContext: searchContext,
+                })
+              : `I want you to act as a helpful AI assistant. I will provide you with search results and a query. Your task is to analyze these search results and provide a comprehensive, well-structured response that answers the query. Include relevant citations to the sources.
 
 Query: ${userInput}
 
@@ -308,7 +324,7 @@ Please provide a detailed response that:
             params: modelParams(),
             chatId: currentChatId,
             systemPrompt: systemPrompt,
-            webSearch: isWebSearchEnabled(),
+            webSearch: shouldUseWebSearch,
           });
         } catch (searchError) {
           console.error("Search failed:", searchError);
@@ -325,7 +341,7 @@ Please provide a detailed response that:
           params: modelParams(),
           chatId: currentChatId,
           systemPrompt: systemPrompt,
-          systemPromptType: systemPromptType,
+          systemPromptType: currentMode.id,
         });
       }
     } catch (error) {
@@ -490,29 +506,13 @@ Please provide a detailed response that:
               </div>
 
               <div class="space-y-6">
-                <div>
-                  <h3 class="text-md font-medium mb-3">System Prompt</h3>
-                  <SystemPromptSelector
-                    selectedPromptId={selectedPromptId()}
-                    onSelect={setSelectedPromptId}
-                    customPrompt={customPrompt()}
-                    onCustomPromptChange={setCustomPrompt}
-                  />
-                  <div class="mt-4">
-                    <button
-                      onClick={handleApplyPrompt}
-                      class="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
-                    >
-                      Apply System Prompt
-                    </button>
-                  </div>
-                </div>
-
                 <ChatSettings
                   modelParams={modelParams()}
                   onParamsChange={setModelParams}
                   isWebSearchEnabled={isWebSearchEnabled()}
                   onWebSearchChange={setIsWebSearchEnabled}
+                  searchMode={searchMode()}
+                  onSearchModeChange={setSearchMode}
                 />
               </div>
             </div>
@@ -557,9 +557,7 @@ Please provide a detailed response that:
                     </div>
                     {message.systemPromptType && (
                       <div class="text-xs px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
-                        {message.systemPromptType === "custom"
-                          ? "Custom"
-                          : message.systemPromptType}
+                        {message.systemPromptType}
                       </div>
                     )}
                   </div>
@@ -628,37 +626,42 @@ Please provide a detailed response that:
       {/* Input Form */}
       <div class="flex-none border-t border-chat-border-light dark:border-chat-border-dark bg-chat-light/80 dark:bg-chat-darker/80 backdrop-blur supports-[backdrop-filter]:bg-chat-light/60 dark:supports-[backdrop-filter]:bg-chat-darker/60">
         <form onSubmit={sendMessage} class="max-w-3xl mx-auto p-4">
-          <div class="relative flex items-center">
-            <button
-              type="button"
-              onClick={() => setIsWebSearchEnabled(!isWebSearchEnabled())}
-              class={`absolute left-2 p-2 rounded-lg transition-colors ${
-                isWebSearchEnabled()
-                  ? "bg-blue-100 text-blue-600 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800"
-                  : "hover:bg-gray-100 text-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white"
-              }`}
-              title={
-                isWebSearchEnabled()
-                  ? "Web search enabled"
-                  : "Web search disabled"
-              }
-            >
-              <Globe size={20} />
-            </button>
+          <div class="relative flex items-center gap-2 min-h-[48px]">
+            <div class="flex-none z-[1]">
+              <FocusMode
+                mode={mode()}
+                onModeChange={(newMode) => {
+                  console.log("Focus mode changed:", newMode);
+                  setMode(newMode);
+                }}
+              />
+            </div>
             <input
               type="text"
               value={currentInput()}
-              onInput={(e) => setCurrentInput(e.currentTarget.value)}
+              onInput={(e) => {
+                console.log("Input changed:", e.currentTarget.value);
+                setCurrentInput(e.currentTarget.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!isGenerating() && currentInput().trim()) {
+                    sendMessage();
+                  }
+                }
+              }}
+              onFocus={() => console.log("Input focused")}
               placeholder="Type your message..."
-              class="w-full pl-12 pr-24 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-              disabled={isGenerating()}
+              class="chat-input flex-1 min-h-[48px] px-4 py-3 bg-chat-input-light dark:bg-chat-input-dark rounded-xl border border-chat-border-light dark:border-chat-border-dark focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 z-[2] text-gray-900 dark:text-white !text-base !font-normal"
             />
             <Button.Root
               type="submit"
               disabled={isGenerating()}
-              class="absolute right-2 p-2 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white
+              class="flex-none p-2 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white
                      disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-300
-                     transition-colors rounded-lg"
+                     transition-colors rounded-lg z-[1]"
             >
               <Show
                 when={!isGenerating()}
