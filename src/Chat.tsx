@@ -539,29 +539,32 @@ Please provide a detailed response that:
         <div class="max-w-3xl mx-auto px-4">
           <For each={messages()}>
             {(message, index) => (
-              <div class="py-6 first:pt-8 border-b border-divider dark:border-divider-dark transition-colors duration-300 animate-messageIn">
-                <div class="flex gap-4 items-start">
-                  <div class="flex flex-col items-center gap-2">
+              <div class="py-8 first:pt-8 border-b border-divider dark:border-divider-dark transition-colors duration-300 animate-messageIn">
+                <div class="flex gap-6 items-start">
+                  <div class="flex flex-col items-center gap-3">
                     <div
-                      class={`flex-none p-2 rounded-full transition-colors duration-300 ${
+                      class={`flex-none p-3 rounded-xl shadow-sm transition-colors duration-300 ${
                         message.role === "user"
                           ? "bg-user dark:bg-user-dark"
                           : "bg-assistant dark:bg-assistant-dark"
                       }`}
                     >
                       {message.role === "user" ? (
-                        <User class="w-4 h-4 text-white" />
+                        <User class="w-5 h-5 text-text-dark dark:text-text" />
                       ) : (
-                        <Bot class="w-4 h-4 text-white" />
+                        <Bot class="w-5 h-5 text-text-dark dark:text-text" />
                       )}
                     </div>
                     {message.systemPromptType && (
-                      <div class="text-xs px-2 py-1 rounded-full bg-surface-secondary dark:bg-surface-secondary-dark text-text-secondary dark:text-text-secondary-dark transition-colors duration-300">
+                      <div class="text-xs px-3 py-1.5 rounded-lg bg-surface-secondary dark:bg-surface-secondary-dark text-text-secondary dark:text-text-secondary-dark transition-colors duration-300 border border-divider dark:border-divider-dark">
                         {message.systemPromptType}
                       </div>
                     )}
                   </div>
-                  <div class="flex-1 min-w-0">
+                  <div class="flex-1 min-w-0 space-y-2">
+                    <div class="text-sm text-text-secondary dark:text-text-secondary-dark">
+                      {message.role === "user" ? "You" : "Assistant"}
+                    </div>
                     <div
                       class={`prose dark:prose-invert max-w-none transition-colors duration-300 ${
                         message.role === "user"
@@ -583,13 +586,16 @@ Please provide a detailed response that:
           </For>
 
           <Show when={currentResponse()}>
-            <div class="py-6 border-b border-divider dark:border-divider-dark transition-colors duration-300 animate-messageIn">
-              <div class="flex gap-4 items-start">
-                <div class="flex-none p-2 rounded-full bg-green-600 dark:bg-green-500">
-                  <Bot class="w-4 h-4 text-white" />
+            <div class="py-8 border-b border-divider dark:border-divider-dark transition-colors duration-300 animate-messageIn">
+              <div class="flex gap-6 items-start">
+                <div class="flex-none p-3 rounded-xl shadow-sm bg-assistant dark:bg-assistant-dark transition-colors duration-300">
+                  <Bot class="w-5 h-5 text-text-dark dark:text-text" />
                 </div>
-                <div class="flex-1 min-w-0">
-                  <div class="prose dark:prose-invert max-w-none text-gray-900 dark:text-white">
+                <div class="flex-1 min-w-0 space-y-2">
+                  <div class="text-sm text-text-secondary dark:text-text-secondary-dark">
+                    Assistant
+                  </div>
+                  <div class="prose dark:prose-invert max-w-none text-text dark:text-text-dark">
                     <MessageContent content={currentResponse()} />
                   </div>
                 </div>
