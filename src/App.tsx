@@ -40,8 +40,9 @@ export default function App() {
     }
   };
 
-  const handleNewChat = (chatId: string) => {
+  const handleNewChat = (chatId: string, model: string) => {
     setSelectedChatId(chatId);
+    setSelectedModel(model); // Set the selected model
     setShowModelList(false); // Switch to chats tab
     if (window.innerWidth < 1024) {
       setIsSidebarOpen(false);
@@ -63,7 +64,11 @@ export default function App() {
       <div
         class={`fixed lg:relative z-30 w-80 flex flex-col h-full bg-white border-r shadow-sm
                 transition-transform duration-300
-                ${isSidebarOpen() ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
+                ${
+                  isSidebarOpen()
+                    ? "translate-x-0"
+                    : "-translate-x-full lg:translate-x-0"
+                }`}
       >
         {/* Sidebar Header */}
         <div class="flex-none border-b p-4 bg-white">

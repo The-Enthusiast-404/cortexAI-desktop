@@ -54,7 +54,7 @@ interface ChatMessage {
 interface ChatProps {
   modelName: string;
   chatId?: string | null;
-  onNewChat?: (chatId: string) => void;
+  onNewChat?: (chatId: string, model: string) => void;
 }
 
 interface FollowUpSuggestion {
@@ -111,6 +111,12 @@ export default function Chat(props: ChatProps) {
   const [searchMode, setSearchMode] = createSignal<string>("");
   const [followUps, setFollowUps] = createSignal<FollowUpSuggestion[]>([]);
   const [mode, setMode] = createSignal("offline");
+
+  const [showNewChatDialog, setShowNewChatDialog] = createSignal(false);
+  const [availableModels, setAvailableModels] = createSignal<
+    { name: string }[]
+  >([]);
+  const [selectedModel, setSelectedModel] = createSignal("");
 
   const getCurrentMode = () => {
     return focusModes.find((m) => m.id === mode()) || focusModes[0];
@@ -416,25 +422,66 @@ Please provide a detailed response that:
     }
   };
 
+  const loadModels = async () => {
+    try {
+      const models = await invoke<{ name: string }[]>("list_models");
+      setAvailableModels(models);
+    } catch (e) {
+      setError(`Failed to load models: ${e}`);
+    }
+  };
+
   const startNewChat = async () => {
     try {
+      console.log("Creating new chat with model:", selectedModel());
       const newChat = await invoke<Chat>("create_chat", {
         title: "New Chat",
-        model: props.modelName,
+        model: selectedModel(),
       });
 
+      console.log("Created new chat:", newChat);
+
+      if (!newChat || !newChat.id) {
+        throw new Error("Invalid response from create_chat");
+      }
+
       if (props.onNewChat) {
-        props.onNewChat(newChat.id);
+        console.log("Calling onNewChat with:", newChat.id, selectedModel());
+        props.onNewChat(newChat.id, selectedModel());
+      } else {
+        console.warn("onNewChat prop is not provided");
       }
 
       setMessages([]);
       setCurrentResponse("");
       setError(undefined);
       setFollowUps([]);
+      setShowNewChatDialog(false);
     } catch (e) {
+      console.error("Failed to create new chat:", e);
       setError(`Failed to create new chat: ${e}`);
+      // Keep dialog open on error
     }
   };
+
+  // Load models when dialog opens
+  createEffect(() => {
+    if (showNewChatDialog()) {
+      loadModels().then(() => {
+        // Only set initial model if none is selected
+        if (!selectedModel() && availableModels().length > 0) {
+          setSelectedModel(availableModels()[0].name);
+        }
+      });
+    }
+  });
+
+  // Reset selected model when dialog closes
+  createEffect(() => {
+    if (!showNewChatDialog()) {
+      setSelectedModel(props.modelName);
+    }
+  });
 
   // Fixed dark mode effect
   createEffect(() => {
@@ -469,7 +516,7 @@ Please provide a detailed response that:
           </div>
           <div class="flex items-center gap-2">
             <Button.Root
-              onClick={startNewChat}
+              onClick={() => setShowNewChatDialog(true)}
               class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
             >
               <MessageSquare class="w-4 h-4 mr-2" />
@@ -719,6 +766,51 @@ Please provide a detailed response that:
           </Show>
         </form>
       </div>
+
+      {/* New Chat Dialog */}
+      <Show when={showNewChatDialog()}>
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-96">
+            <h2 class="text-lg font-semibold mb-4">Start New Chat</h2>
+            <div class="mb-4">
+              <label class="block text-sm font-medium mb-2">Select Model</label>
+              <select
+                value={selectedModel()}
+                onChange={(e) => {
+                  console.log("Selected model:", e.currentTarget.value);
+                  setSelectedModel(e.currentTarget.value);
+                }}
+                class="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+              >
+                <For each={availableModels()}>
+                  {(model) => (
+                    <option
+                      value={model.name}
+                      selected={model.name === selectedModel()}
+                    >
+                      {model.name}
+                    </option>
+                  )}
+                </For>
+              </select>
+            </div>
+            <div class="flex justify-end space-x-2">
+              <Button.Root
+                onClick={() => setShowNewChatDialog(false)}
+                class="px-4 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </Button.Root>
+              <Button.Root
+                onClick={startNewChat}
+                class="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Create
+              </Button.Root>
+            </div>
+          </div>
+        </div>
+      </Show>
     </div>
   );
 }
