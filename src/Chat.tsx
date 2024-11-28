@@ -202,6 +202,14 @@ export default function Chat(props: ChatProps) {
       })
     );
 
+    // Handle cancellation
+    unlisteners.push(
+      await listen("chat-cancelled", () => {
+        setIsGenerating(false);
+        setCurrentResponse((prev) => prev + "\n[Generation cancelled]");
+      })
+    );
+
     onCleanup(() => {
       unlisteners.forEach((unlisten) => unlisten());
     });
@@ -503,6 +511,14 @@ Please provide a detailed response that:
     }
   });
 
+  const handleCancelGeneration = async () => {
+    try {
+      await invoke("cancel_chat_generation");
+    } catch (e) {
+      setError(`Failed to cancel generation: ${e}`);
+    }
+  };
+
   return (
     <div class="flex flex-col h-full bg-primary dark:bg-primary-dark transition-colors duration-300">
       {/* Header */}
@@ -665,7 +681,8 @@ Please provide a detailed response that:
             )}
           </For>
 
-          <Show when={currentResponse()}>
+          {/* Show current response in message style */}
+          {currentResponse() && (
             <div class="py-8 border-b border-divider dark:border-divider-dark transition-colors duration-300 animate-messageIn">
               <div class="flex gap-6 items-start">
                 <div class="flex-none p-3 rounded-xl shadow-sm bg-assistant dark:bg-assistant-dark transition-colors duration-300">
@@ -681,7 +698,7 @@ Please provide a detailed response that:
                 </div>
               </div>
             </div>
-          </Show>
+          )}
 
           {/* Show follow-ups after response is complete */}
           <Show
@@ -711,7 +728,10 @@ Please provide a detailed response that:
 
       {/* Input Form */}
       <div class="flex-none border-t border-divider dark:border-divider-dark bg-surface/80 dark:bg-surface-dark/80 backdrop-blur supports-[backdrop-filter]:bg-surface/60 dark:supports-[backdrop-filter]:bg-surface-dark/60 transition-all duration-300">
-        <form onSubmit={sendMessage} class="max-w-3xl mx-auto p-4">
+        <form
+          onSubmit={(e) => e.preventDefault()}
+          class="max-w-3xl mx-auto p-4"
+        >
           <div class="relative flex items-center gap-2 min-h-[48px]">
             <div class="flex-none z-[1]">
               <FocusMode
@@ -743,15 +763,25 @@ Please provide a detailed response that:
               class="chat-input flex-1 min-h-[48px] px-4 py-3 bg-input dark:bg-input-dark rounded-xl border border-divider dark:border-divider-dark focus:outline-none focus:ring-2 focus:ring-accent dark:focus:ring-accent-dark z-[2] text-text dark:text-text-dark !text-base !font-normal transition-all duration-300"
             />
             <Button.Root
-              type="submit"
-              disabled={isGenerating()}
+              type="button"
+              onClick={isGenerating() ? handleCancelGeneration : sendMessage}
+              disabled={!currentInput().trim() && !isGenerating()}
               class="flex-none p-2 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white
                      disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-300
                      transition-colors rounded-lg z-[1]"
             >
               <Show
                 when={!isGenerating()}
-                fallback={<Loader class="w-5 h-5 animate-spin" />}
+                fallback={
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <rect x="5" y="5" width="10" height="10" />
+                  </svg>
+                }
               >
                 <Send class="w-5 h-5" />
               </Show>

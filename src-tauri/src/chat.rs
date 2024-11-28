@@ -5,7 +5,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{Emitter, Window};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex, broadcast};
 
 // Message Types and Structures
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -137,7 +137,7 @@ impl ModelConfig {
 // Context Management Implementation
 impl ChatContext {
     pub async fn new(model: &str) -> Result<Self, String> {
-        let model_details = get_model_details(model.to_string()).await?;
+        let model_details = ModelConfig::get_default_config(model);
         
         Ok(Self {
             messages: Vec::new(),
@@ -279,6 +279,38 @@ pub async fn generate_follow_ups(messages: &[ChatMessage], current_response: &st
 }
 
 // Tauri Commands
+#[derive(Clone)]
+pub struct ChatState {
+    cancel_tx: broadcast::Sender<()>,
+}
+
+impl Default for ChatState {
+    fn default() -> Self {
+        let (tx, _) = broadcast::channel(1);
+        Self { cancel_tx: tx }
+    }
+}
+
+impl ChatState {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn reset_cancellation(&self) -> broadcast::Receiver<()> {
+        self.cancel_tx.subscribe()
+    }
+
+    pub fn cancel_generation(&self) {
+        let _ = self.cancel_tx.send(());
+    }
+}
+
+#[tauri::command]
+pub async fn cancel_chat_generation<'a>(state: tauri::State<'a, ChatState>) -> Result<(), String> {
+    state.cancel_generation();
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn get_context_stats(chat_id: String) -> Result<ContextStats, String> {
     // Get messages first, releasing the lock immediately
@@ -307,6 +339,7 @@ pub async fn get_context_stats(chat_id: String) -> Result<ContextStats, String> 
 #[tauri::command]
 pub async fn chat(
     window: Window,
+    state: tauri::State<'_, ChatState>,
     model: String,
     mut messages: Vec<ChatMessage>,
     params: ModelParams,
@@ -316,6 +349,7 @@ pub async fn chat(
 ) -> Result<(), String> {
     let client = Client::new();
     let url = "http://localhost:11434/api/chat";
+    let mut cancel_rx = state.reset_cancellation();
 
     // Initialize context manager
     let mut context = ChatContext::new(&model).await?;
@@ -396,97 +430,109 @@ pub async fn chat(
     let mut buffer = Vec::new();
     let mut current_response = String::new();
 
-    while let Some(chunk_result) = stream.next().await {
-        match chunk_result {
-            Ok(chunk) => {
-                buffer.extend_from_slice(&chunk);
+    loop {
+        tokio::select! {
+            chunk_result = stream.next() => {
+                match chunk_result {
+                    Some(Ok(chunk)) => {
+                        buffer.extend_from_slice(&chunk);
 
-                if let Ok(text) = String::from_utf8(buffer.clone()) {
-                    if let Ok(chat_response) = serde_json::from_str::<ChatResponse>(&text) {
-                        current_response.push_str(&chat_response.message.content);
+                        if let Ok(text) = String::from_utf8(buffer.clone()) {
+                            if let Ok(chat_response) = serde_json::from_str::<ChatResponse>(&text) {
+                                current_response.push_str(&chat_response.message.content);
 
-                        // Emit streaming response
-                        window
-                            .emit(
-                                "chat-response",
-                                ChatResponse {
-                                    message: ChatMessage {
+                                // Emit streaming response
+                                window
+                                    .emit(
+                                        "chat-response",
+                                        ChatResponse {
+                                            message: ChatMessage {
+                                                id: None,
+                                                role: "assistant".to_string(),
+                                                content: chat_response.message.content,
+                                                is_pinned: Some(false),
+                                                system_prompt_type: None,
+                                            },
+                                            done: false,
+                                            follow_ups: None,
+                                        },
+                                    )
+                                    .map_err(|e| format!("Failed to emit response: {}", e))?;
+
+                                if chat_response.done {
+                                    // Generate follow-up suggestions
+                                    let follow_ups = generate_follow_ups(context.get_messages(), &current_response).await?;
+
+                                    // Update context with assistant's response
+                                    let stats = context.add_message(ChatMessage {
                                         id: None,
                                         role: "assistant".to_string(),
-                                        content: chat_response.message.content,
+                                        content: current_response.clone(),
                                         is_pinned: Some(false),
                                         system_prompt_type: None,
-                                    },
-                                    done: false,
-                                    follow_ups: None,
-                                },
-                            )
-                            .map_err(|e| format!("Failed to emit response: {}", e))?;
+                                    });
 
-                        if chat_response.done {
-                            // Generate follow-up suggestions
-                            let follow_ups = generate_follow_ups(context.get_messages(), &current_response).await?;
+                                    // Emit final context stats
+                                    window
+                                        .emit("context-update", &stats)
+                                        .map_err(|e| format!("Failed to emit context stats: {}", e))?;
 
-                            // Update context with assistant's response
-                            let stats = context.add_message(ChatMessage {
-                                id: None,
-                                role: "assistant".to_string(),
-                                content: current_response.clone(),
-                                is_pinned: Some(false),
-                                system_prompt_type: None,
-                            });
+                                    // Save message if chat_id exists
+                                    if let Some(chat_id) = &chat_id {
+                                        let mut db_guard = DB.lock().unwrap();
+                                        let db = db_guard.as_mut().ok_or("Database not initialized")?;
 
-                            // Emit final context stats
-                            window
-                                .emit("context-update", &stats)
-                                .map_err(|e| format!("Failed to emit context stats: {}", e))?;
+                                        db.add_message(
+                                            chat_id,
+                                            "assistant",
+                                            &current_response,
+                                            false,
+                                            system_prompt_type.clone(),
+                                        )
+                                        .map_err(|e| format!("Failed to save assistant response: {}", e))?;
+                                    }
 
-                            // Save message if chat_id exists
-                            if let Some(chat_id) = &chat_id {
-                                let mut db_guard = DB.lock().unwrap();
-                                let db = db_guard.as_mut().ok_or("Database not initialized")?;
-
-                                db.add_message(
-                                    chat_id,
-                                    "assistant",
-                                    &current_response,
-                                    false,
-                                    system_prompt_type.clone(),
-                                )
-                                .map_err(|e| format!("Failed to save assistant response: {}", e))?;
-                            }
-
-                            // Generate follow-ups and emit final response
-                            let stream_response = StreamResponse {
-                                content: current_response.clone(),
-                                done: true,
-                                chat_id: chat_id.clone(),
-                            };
-
-                            // Emit completion with follow-ups
-                            window
-                                .emit(
-                                    "chat-complete",
-                                    ChatResponse {
-                                        message: ChatMessage {
-                                            id: None,
-                                            role: "assistant".to_string(),
-                                            content: current_response.clone(),
-                                            is_pinned: Some(false),
-                                            system_prompt_type: None,
-                                        },
+                                    // Generate follow-ups and emit final response
+                                    let stream_response = StreamResponse {
+                                        content: current_response.clone(),
                                         done: true,
-                                        follow_ups: Some(follow_ups),
-                                    },
-                                )
-                                .map_err(|e| format!("Failed to emit completion: {}", e))?;
-                        }
+                                        chat_id: chat_id.clone(),
+                                    };
 
+                                    // Emit completion with follow-ups
+                                    window
+                                        .emit(
+                                            "chat-complete",
+                                            ChatResponse {
+                                                message: ChatMessage {
+                                                    id: None,
+                                                    role: "assistant".to_string(),
+                                                    content: current_response.clone(),
+                                                    is_pinned: Some(false),
+                                                    system_prompt_type: None,
+                                                },
+                                                done: true,
+                                                follow_ups: Some(follow_ups),
+                                            },
+                                        )
+                                        .map_err(|e| format!("Failed to emit completion: {}", e))?;
+                                }
+
+                                buffer.clear();
+                            }
+                        }
                         buffer.clear();
                     }
+                    Some(Err(e)) => return Err(format!("Failed to read response chunk: {}", e)),
+                    None => break,
                 }
             }
-            Err(e) => return Err(format!("Failed to read response chunk: {}", e)),
+            _ = cancel_rx.recv() => {
+                // Emit cancellation event
+                window.emit("chat-cancelled", ())
+                    .map_err(|e| format!("Failed to emit cancellation event: {}", e))?;
+                return Ok(());
+            }
         }
     }
 
@@ -640,14 +686,4 @@ pub async fn import_chat(file_path: String) -> Result<String, String> {
     }
     
     Ok(chat.id)
-}
-
-async fn get_model_details(model: String) -> Result<ModelConfig, String> {
-    // Implement logic to fetch model details from Ollama
-    // For now, return a default model config
-    Ok(ModelConfig {
-        name: model,
-        context_window: 4096,
-        max_output_tokens: 2048,
-    })
 }
