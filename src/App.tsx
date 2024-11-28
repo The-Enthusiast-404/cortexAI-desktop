@@ -4,6 +4,7 @@ import ModelPuller from "./ModelPuller";
 import Chat from "./Chat";
 import ChatHistory from "./ChatHistory";
 import "./index.css";
+import { invoke } from "@tauri-apps/api/core";
 
 interface Chat {
   id: string;
@@ -32,11 +33,28 @@ export default function App() {
     }
   };
 
-  const handleModelSelect = (modelName: string) => {
-    setSelectedModel(modelName);
-    setSelectedChatId(null);
-    if (window.innerWidth < 1024) {
-      setIsSidebarOpen(false);
+  const handleModelSelect = async (modelName: string) => {
+    try {
+      // Create a new chat with the selected model
+      const newChat = await invoke<Chat>("create_chat", {
+        title: "New Chat",
+        model: modelName,
+      });
+
+      if (!newChat || !newChat.id) {
+        throw new Error("Invalid response from create_chat");
+      }
+
+      // Update state with the new chat
+      setSelectedModel(modelName);
+      setSelectedChatId(newChat.id);
+      setShowModelList(false); // Switch to chats tab
+
+      if (window.innerWidth < 1024) {
+        setIsSidebarOpen(false);
+      }
+    } catch (error) {
+      console.error("Failed to create new chat:", error);
     }
   };
 
