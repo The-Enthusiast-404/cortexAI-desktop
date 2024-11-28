@@ -70,7 +70,7 @@ pub struct ContextStats {
 pub struct ChatContext {
     messages: Vec<ChatMessage>,
     total_tokens: usize,
-    max_tokens: usize,
+    context_window: usize,
     pruned_count: usize,
 }
 
@@ -100,23 +100,59 @@ pub struct MessageExport {
     pub is_pinned: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModelConfig {
+    pub name: String,
+    pub context_window: usize,
+    pub max_output_tokens: i32,
+}
+
+impl ModelConfig {
+    pub fn get_default_config(model: &str) -> Self {
+        match model {
+            "gemma:2b" => Self {
+                name: model.to_string(),
+                context_window: 8192,
+                max_output_tokens: 2048,
+            },
+            "gemma:7b" => Self {
+                name: model.to_string(),
+                context_window: 8192,
+                max_output_tokens: 2048,
+            },
+            "llama2" => Self {
+                name: model.to_string(),
+                context_window: 4096,
+                max_output_tokens: 2048,
+            },
+            _ => Self {
+                name: model.to_string(),
+                context_window: 4096, // Default conservative context window
+                max_output_tokens: 2048,
+            },
+        }
+    }
+}
+
 // Context Management Implementation
 impl ChatContext {
-    pub fn new(max_tokens: usize) -> Self {
-        Self {
+    pub async fn new(model: &str) -> Result<Self, String> {
+        let model_details = get_model_details(model.to_string()).await?;
+        
+        Ok(Self {
             messages: Vec::new(),
             total_tokens: 0,
-            max_tokens,
+            context_window: model_details.context_window,
             pruned_count: 0,
-        }
+        })
     }
 
     pub fn get_stats(&self) -> ContextStats {
         ContextStats {
             total_tokens: self.total_tokens,
-            max_tokens: self.max_tokens,
+            max_tokens: self.context_window,
             message_count: self.messages.len(),
-            context_percentage: (self.total_tokens as f32 / self.max_tokens as f32) * 100.0,
+            context_percentage: (self.total_tokens as f32 / self.context_window as f32) * 100.0,
             pruned_messages: self.pruned_count,
         }
     }
@@ -140,7 +176,7 @@ impl ChatContext {
         self.total_tokens += estimated_tokens;
 
         // Prune messages if we exceed the token limit
-        while self.total_tokens > self.max_tokens && self.messages.len() > 1 {
+        while self.total_tokens > self.context_window && self.messages.len() > 1 {
             // Find the last non-pinned message before the most recent message
             if let Some(idx) = self.messages[..self.messages.len()-1]
                 .iter()
@@ -245,14 +281,16 @@ pub async fn generate_follow_ups(messages: &[ChatMessage], current_response: &st
 // Tauri Commands
 #[tauri::command]
 pub async fn get_context_stats(chat_id: String) -> Result<ContextStats, String> {
-    let db_guard = DB.lock().unwrap();
-    let db = db_guard.as_ref().ok_or("Database not initialized")?;
+    // Get messages first, releasing the lock immediately
+    let messages = {
+        let db_guard = DB.lock().unwrap();
+        let db = db_guard.as_ref().ok_or("Database not initialized")?;
+        db.get_chat_messages(&chat_id)
+            .map_err(|e| format!("Failed to get chat messages: {}", e))?
+    };
 
-    let messages = db
-        .get_chat_messages(&chat_id)
-        .map_err(|e| format!("Failed to get chat messages: {}", e))?;
-
-    let mut context = ChatContext::new(2048); // We'll make this configurable later
+    // Now create context and add messages after DB lock is released
+    let mut context = ChatContext::new("gemma:2b").await?;
     for msg in messages {
         context.add_message(ChatMessage {
             id: Some(msg.id),
@@ -280,7 +318,7 @@ pub async fn chat(
     let url = "http://localhost:11434/api/chat";
 
     // Initialize context manager
-    let mut context = ChatContext::new(params.max_tokens as usize);
+    let mut context = ChatContext::new(&model).await?;
 
     // Add system prompt if provided
     if let Some(system) = &system_prompt {
@@ -602,4 +640,14 @@ pub async fn import_chat(file_path: String) -> Result<String, String> {
     }
     
     Ok(chat.id)
+}
+
+async fn get_model_details(model: String) -> Result<ModelConfig, String> {
+    // Implement logic to fetch model details from Ollama
+    // For now, return a default model config
+    Ok(ModelConfig {
+        name: model,
+        context_window: 4096,
+        max_output_tokens: 2048,
+    })
 }

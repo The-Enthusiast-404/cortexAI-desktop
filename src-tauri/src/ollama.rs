@@ -27,6 +27,21 @@ pub struct PullProgress {
     pub completed: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ModelDetails {
+    pub license: String,
+    pub modelfile: String,
+    pub parameters: String,
+    pub template: String,
+    pub context_window: usize,  // Context window size
+    pub system: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ShowModelResponse {
+    pub details: ModelDetails,
+}
+
 #[tauri::command]
 pub async fn list_models() -> Result<Vec<OllamaModel>, String> {
     let client = Client::new();
@@ -81,4 +96,22 @@ pub async fn pull_model(window: Window, model_name: String) -> Result<(), String
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_model_details(model_name: String) -> Result<ModelDetails, String> {
+    let client = Client::new();
+    let url = "http://localhost:11434/api/show";
+    
+    let payload = serde_json::json!({
+        "name": model_name
+    });
+
+    match client.post(url).json(&payload).send().await {
+        Ok(response) => match response.json::<ShowModelResponse>().await {
+            Ok(model_response) => Ok(model_response.details),
+            Err(e) => Err(format!("Failed to parse model details: {}", e)),
+        },
+        Err(e) => Err(format!("Failed to connect to Ollama: {}", e)),
+    }
 }
