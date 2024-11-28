@@ -1,4 +1,4 @@
-import { createSignal, For, Show, onMount } from "solid-js";
+import { createSignal, For, Show, onMount, createEffect } from "solid-js";
 import { Plus, X } from "lucide-solid";
 import Chat from "./Chat";
 
@@ -10,9 +10,57 @@ interface Tab {
   isActive: boolean;
 }
 
+// Local storage key for tabs
+const TABS_STORAGE_KEY = "cortexai-tabs";
+const ACTIVE_TAB_KEY = "cortexai-active-tab";
+
 export default function TabManager() {
   const [tabs, setTabs] = createSignal<Tab[]>([]);
   const [activeTabId, setActiveTabId] = createSignal<string | null>(null);
+
+  // Save tabs to local storage whenever they change
+  createEffect(() => {
+    const currentTabs = tabs();
+    if (currentTabs.length > 0) {
+      localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(currentTabs));
+    }
+  });
+
+  // Save active tab whenever it changes
+  createEffect(() => {
+    const currentActiveTab = activeTabId();
+    if (currentActiveTab) {
+      localStorage.setItem(ACTIVE_TAB_KEY, currentActiveTab);
+    }
+  });
+
+  // Load saved tabs on mount
+  onMount(() => {
+    const savedTabs = localStorage.getItem(TABS_STORAGE_KEY);
+    const savedActiveTab = localStorage.getItem(ACTIVE_TAB_KEY);
+
+    if (savedTabs) {
+      try {
+        const parsedTabs = JSON.parse(savedTabs) as Tab[];
+        setTabs(parsedTabs);
+
+        // Restore active tab if it exists in the saved tabs
+        if (
+          savedActiveTab &&
+          parsedTabs.some((tab) => tab.id === savedActiveTab)
+        ) {
+          setActiveTabId(savedActiveTab);
+        } else if (parsedTabs.length > 0) {
+          setActiveTabId(parsedTabs[0].id);
+        }
+      } catch (e) {
+        console.error("Failed to restore tabs:", e);
+        createNewTab(); // Create a new tab if restoration fails
+      }
+    } else {
+      createNewTab(); // Create a new tab if no saved tabs
+    }
+  });
 
   const createNewTab = () => {
     const newTab: Tab = {
@@ -27,15 +75,17 @@ export default function TabManager() {
     setActiveTabId(newTab.id);
   };
 
-  // Create a default tab when the component mounts
-  onMount(() => {
-    if (tabs().length === 0) {
-      createNewTab();
-    }
-  });
-
   const closeTab = (tabId: string) => {
-    setTabs((prev) => prev.filter((tab) => tab.id !== tabId));
+    setTabs((prev) => {
+      const newTabs = prev.filter((tab) => tab.id !== tabId);
+      // If we're removing the last tab, clear local storage
+      if (newTabs.length === 0) {
+        localStorage.removeItem(TABS_STORAGE_KEY);
+        localStorage.removeItem(ACTIVE_TAB_KEY);
+      }
+      return newTabs;
+    });
+
     if (activeTabId() === tabId) {
       const remainingTabs = tabs().filter((tab) => tab.id !== tabId);
       setActiveTabId(
