@@ -98,6 +98,7 @@ export default function Chat(props: ChatProps) {
   const [error, setError] = createSignal<string>();
   const [isExporting, setIsExporting] = createSignal(false);
   const [isDark, setIsDark] = createSignal(true);
+  const [instanceId] = createSignal(crypto.randomUUID());
 
   const [modelParams, setModelParams] = createSignal<ModelParams>({
     temperature: 0.7,
@@ -177,42 +178,71 @@ export default function Chat(props: ChatProps) {
     const unlisteners: UnlistenFn[] = [];
 
     unlisteners.push(
-      await listen<ChatResponse>("chat-response", (event) => {
-        // Accumulate streaming response
-        setCurrentResponse((prev) => prev + event.payload.message.content);
+      await listen<ChatResponse>(`chat-response-${instanceId()}`, (event) => {
+        if (event.payload.message.content) {
+          setCurrentResponse((prev) => prev + event.payload.message.content);
+          scrollToBottom();
+        }
       })
     );
 
-    // Handle completion with follow-ups
     unlisteners.push(
-      await listen<ChatResponse>("chat-complete", (event) => {
-        // Add final message to the list
-        const finalResponse = currentResponse();
-        if (finalResponse.trim()) {
+      await listen<ChatResponse>(`chat-complete-${instanceId()}`, (event) => {
+        const response = event.payload;
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: response.message.content,
+            isPinned: false,
+          },
+        ]);
+        setCurrentResponse("");
+        setIsGenerating(false);
+        if (response.follow_ups) {
+          setFollowUps(response.follow_ups);
+        }
+        scrollToBottom();
+      })
+    );
+
+    unlisteners.push(
+      await listen(`chat-cancelled-${instanceId()}`, () => {
+        setIsGenerating(false);
+        if (currentResponse()) {
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: finalResponse },
+            {
+              role: "assistant",
+              content: currentResponse(),
+              isPinned: false,
+            },
           ]);
+          setCurrentResponse("");
         }
-        setCurrentResponse("");
-
-        // Set follow-ups and stop generating
-        setFollowUps(event.payload.follow_ups || []);
-        setIsGenerating(false);
       })
     );
 
-    // Handle cancellation
     unlisteners.push(
-      await listen("chat-cancelled", () => {
-        setIsGenerating(false);
-        setCurrentResponse((prev) => prev + "\n[Generation cancelled]");
+      await listen<any>(`context-update-${instanceId()}`, (event) => {
+        // Handle context updates
       })
     );
 
     onCleanup(() => {
       unlisteners.forEach((unlisten) => unlisten());
     });
+
+    if (props.chatId) {
+      try {
+        const chatMessages = await invoke<ChatMessage[]>("get_chat_messages", {
+          chatId: props.chatId,
+        });
+        setMessages(chatMessages);
+      } catch (e) {
+        console.error("Failed to load chat history:", e);
+      }
+    }
   });
 
   const toggleMessagePin = async (index: number) => {
@@ -243,130 +273,36 @@ export default function Chat(props: ChatProps) {
     return messages().filter((msg) => msg.isPinned);
   };
 
-  const sendMessage = async (e?: Event) => {
-    e?.preventDefault();
-    const userInput = currentInput().trim();
+  const sendMessage = async () => {
+    const input = currentInput().trim();
+    if (!input || isGenerating()) return;
 
-    if (!userInput || isGenerating()) return;
+    setCurrentInput("");
+    setIsGenerating(true);
+    setFollowUps([]);
+    setError(undefined);
 
-    let currentChatId = props.chatId;
+    const newMessage: ChatMessage = {
+      role: "user",
+      content: input,
+      isPinned: false,
+    };
+
+    setMessages((prev) => [...prev, newMessage]);
 
     try {
-      const currentMode = getCurrentMode();
-      const systemPrompt = currentMode.systemPrompt;
-
-      console.log("Using system prompt:", {
-        id: currentMode.id,
-        prompt: systemPrompt.substring(0, 100) + "...",
+      await invoke("chat", {
+        model: props.modelName || selectedModel(),
+        messages: [...messages(), newMessage],
+        params: modelParams(),
+        chatId: props.chatId,
+        systemPrompt: getCurrentSystemPrompt(),
+        systemPromptType: getCurrentMode().id,
+        instanceId: instanceId(), // Pass instanceId to backend
       });
-
-      // Create user message with system prompt type
-      const userMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: userInput,
-        isPinned: false,
-        systemPromptType: currentMode.id,
-      };
-
-      // Clear input and set generating state
-      setCurrentInput("");
-      setIsGenerating(true);
-      setError(undefined);
-
-      // Perform web search if enabled
-      const shouldUseWebSearch = isWebSearchEnabled();
-
-      if (shouldUseWebSearch) {
-        console.log("Performing web search for:", userInput);
-        try {
-          const searchResponse = await invoke<SearchResponse>("search", {
-            query: userInput,
-            mode: searchMode(),
-          });
-          console.log("Got search results:", searchResponse);
-
-          // Create a context message from search results
-          const searchContext = searchResponse.results
-            .map((result) => {
-              let citation = `[${result.title}](${result.url})\n${result.snippet}`;
-              // Add academic metadata if available
-              if (result.source_type === "academic") {
-                if (result.authors && result.authors.length > 0) {
-                  citation += `\nAuthors: ${result.authors.join(", ")}`;
-                }
-                if (result.publish_date) {
-                  citation += `\nPublished: ${result.publish_date}`;
-                }
-                if (result.doi) {
-                  citation += `\nDOI: ${result.doi}`;
-                }
-              }
-              return citation;
-            })
-            .join("\n\n");
-
-          // Create a mode-specific prompt
-          const searchPrompt =
-            searchMode() === "academic"
-              ? generateAcademicPrompt({
-                  query: userInput,
-                  searchContext: searchContext,
-                })
-              : `I want you to act as a helpful AI assistant. I will provide you with search results and a query. Your task is to analyze these search results and provide a comprehensive, well-structured response that answers the query. Include relevant citations to the sources.
-
-Query: ${userInput}
-
-Search Results:
-${searchContext}
-
-Please provide a detailed response that:
-1. Summarizes the key information from the search results
-2. Directly answers the query
-3. Includes relevant citations using [Source Title](URL) format
-4. Mentions any limitations or uncertainties in the information
-5. Provides a balanced view of the topic`;
-
-          // Update messages immediately with user's message
-          setMessages((prev) => [...prev, userMessage]);
-
-          // Invoke chat with search context
-          await invoke("chat", {
-            model: props.modelName,
-            messages: [
-              ...messages(),
-              userMessage,
-              {
-                role: "system",
-                content: searchPrompt,
-              },
-            ],
-            params: modelParams(),
-            chatId: currentChatId,
-            systemPrompt: systemPrompt,
-            webSearch: shouldUseWebSearch,
-          });
-        } catch (searchError) {
-          console.error("Search failed:", searchError);
-          setError(`Search failed: ${searchError}`);
-          setIsGenerating(false);
-        }
-      } else {
-        // Regular chat without search
-        setMessages((prev) => [...prev, userMessage]);
-
-        await invoke("chat", {
-          model: props.modelName,
-          messages: [...messages(), userMessage],
-          params: modelParams(),
-          chatId: currentChatId,
-          systemPrompt: systemPrompt,
-          systemPromptType: currentMode.id,
-        });
-      }
-    } catch (error) {
-      console.error("Chat error:", error);
-      setError(`Failed to send message: ${error}`);
+    } catch (e) {
+      console.error("Failed to send message:", e);
+      setError("Failed to send message. Please try again.");
       setIsGenerating(false);
     }
   };

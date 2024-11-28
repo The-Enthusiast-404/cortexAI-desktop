@@ -346,6 +346,7 @@ pub async fn chat(
     chat_id: Option<String>,
     system_prompt: Option<String>,
     system_prompt_type: Option<String>,
+    instance_id: String,
 ) -> Result<(), String> {
     let client = Client::new();
     let url = "http://localhost:11434/api/chat";
@@ -369,6 +370,7 @@ pub async fn chat(
     if let Some(chat_id) = &chat_id {
         let db_guard = DB.lock().unwrap();
         let db = db_guard.as_ref().ok_or("Database not initialized")?;
+
         let history = db
             .get_chat_messages(chat_id)
             .map_err(|e| format!("Failed to get chat history: {}", e))?;
@@ -389,7 +391,7 @@ pub async fn chat(
     if let Some(new_message) = messages.last().cloned() {
         let stats = context.add_message(new_message);
         window
-            .emit("context-update", &stats)
+            .emit(&format!("context-update-{}", instance_id), &stats)
             .map_err(|e| format!("Failed to emit context stats: {}", e))?;
     }
 
@@ -441,10 +443,10 @@ pub async fn chat(
                             if let Ok(chat_response) = serde_json::from_str::<ChatResponse>(&text) {
                                 current_response.push_str(&chat_response.message.content);
 
-                                // Emit streaming response
+                                // Emit streaming response with instance-specific event
                                 window
                                     .emit(
-                                        "chat-response",
+                                        &format!("chat-response-{}", instance_id),
                                         ChatResponse {
                                             message: ChatMessage {
                                                 id: None,
@@ -472,9 +474,9 @@ pub async fn chat(
                                         system_prompt_type: None,
                                     });
 
-                                    // Emit final context stats
+                                    // Emit final context stats with instance-specific event
                                     window
-                                        .emit("context-update", &stats)
+                                        .emit(&format!("context-update-{}", instance_id), &stats)
                                         .map_err(|e| format!("Failed to emit context stats: {}", e))?;
 
                                     // Save message if chat_id exists
@@ -492,17 +494,10 @@ pub async fn chat(
                                         .map_err(|e| format!("Failed to save assistant response: {}", e))?;
                                     }
 
-                                    // Generate follow-ups and emit final response
-                                    let stream_response = StreamResponse {
-                                        content: current_response.clone(),
-                                        done: true,
-                                        chat_id: chat_id.clone(),
-                                    };
-
-                                    // Emit completion with follow-ups
+                                    // Emit completion with follow-ups using instance-specific event
                                     window
                                         .emit(
-                                            "chat-complete",
+                                            &format!("chat-complete-{}", instance_id),
                                             ChatResponse {
                                                 message: ChatMessage {
                                                     id: None,
@@ -528,8 +523,8 @@ pub async fn chat(
                 }
             }
             _ = cancel_rx.recv() => {
-                // Emit cancellation event
-                window.emit("chat-cancelled", ())
+                // Emit cancellation event with instance-specific event
+                window.emit(&format!("chat-cancelled-{}", instance_id), ())
                     .map_err(|e| format!("Failed to emit cancellation event: {}", e))?;
                 return Ok(());
             }
