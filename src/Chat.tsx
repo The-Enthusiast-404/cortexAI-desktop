@@ -416,6 +416,26 @@ Please provide a detailed response that:
     }
   };
 
+  const startNewChat = async () => {
+    try {
+      const newChat = await invoke<Chat>("create_chat", {
+        title: "New Chat",
+        model: props.modelName,
+      });
+
+      if (props.onNewChat) {
+        props.onNewChat(newChat.id);
+      }
+
+      setMessages([]);
+      setCurrentResponse("");
+      setError(undefined);
+      setFollowUps([]);
+    } catch (e) {
+      setError(`Failed to create new chat: ${e}`);
+    }
+  };
+
   // Fixed dark mode effect
   createEffect(() => {
     if (isDark()) {
@@ -449,6 +469,13 @@ Please provide a detailed response that:
           </div>
           <div class="flex items-center gap-2">
             <Button.Root
+              onClick={startNewChat}
+              class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <MessageSquare class="w-4 h-4 mr-2" />
+              New Chat
+            </Button.Root>
+            <Button.Root
               onClick={() => setIsDark(!isDark())}
               class="p-2 text-text-secondary dark:text-text-secondary-dark hover:bg-hover dark:hover:bg-hover-dark rounded-full transition-all duration-300"
             >
@@ -474,8 +501,8 @@ Please provide a detailed response that:
                 </Button.Root>
               </Show>
               <Button.Root
-                class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
                 onClick={() => setShowSettings(!showSettings())}
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
               >
                 <Settings class="h-4 w-4 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white" />
               </Button.Root>
