@@ -15,6 +15,7 @@ interface Tab {
   modelName: string;
   chatId: string | null;
   isActive: boolean;
+  instanceId?: string;
 }
 
 // Local storage key for tabs
@@ -162,6 +163,7 @@ export default function TabManager() {
       modelName: "",
       chatId: null,
       isActive: false,
+      instanceId: crypto.randomUUID(),
     };
 
     setTabs((prev) => [...prev, newTab]);
@@ -280,6 +282,7 @@ export default function TabManager() {
                 <Chat
                   modelName={tab.modelName}
                   chatId={tab.chatId}
+                  instanceId={tab.instanceId}
                   onNewChat={(chatId, model) =>
                     handleNewChat(chatId, model, tab.id)
                   }

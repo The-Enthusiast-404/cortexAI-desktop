@@ -55,6 +55,7 @@ interface ChatProps {
   modelName: string;
   chatId?: string | null;
   onNewChat?: (chatId: string, model: string) => void;
+  instanceId?: string;
 }
 
 interface FollowUpSuggestion {
@@ -98,7 +99,8 @@ export default function Chat(props: ChatProps) {
   const [error, setError] = createSignal<string>();
   const [isExporting, setIsExporting] = createSignal(false);
   const [isDark, setIsDark] = createSignal(true);
-  const [instanceId] = createSignal(crypto.randomUUID());
+  const [instanceId] = createSignal(props.instanceId || crypto.randomUUID());
+  const [isVisible, setIsVisible] = createSignal(true);
 
   const [modelParams, setModelParams] = createSignal<ModelParams>({
     temperature: 0.7,
@@ -180,8 +182,7 @@ export default function Chat(props: ChatProps) {
     unlisteners.push(
       await listen<ChatResponse>(`chat-response-${instanceId()}`, (event) => {
         if (event.payload.message.content) {
-          setCurrentResponse((prev) => prev + event.payload.message.content);
-          scrollToBottom();
+          updateResponse(event.payload.message.content);
         }
       })
     );
@@ -189,6 +190,9 @@ export default function Chat(props: ChatProps) {
     unlisteners.push(
       await listen<ChatResponse>(`chat-complete-${instanceId()}`, (event) => {
         const response = event.payload;
+        // Force update any pending response
+        updateResponse("", true);
+        
         setMessages((prev) => [
           ...prev,
           {
@@ -203,11 +207,21 @@ export default function Chat(props: ChatProps) {
           setFollowUps(response.follow_ups);
         }
         scrollToBottom();
+        
+        // Clear stored response on completion
+        try {
+          sessionStorage.removeItem(`chat-response-${instanceId()}`);
+        } catch (e) {
+          console.warn('Failed to clear chat response:', e);
+        }
       })
     );
 
     unlisteners.push(
       await listen(`chat-cancelled-${instanceId()}`, () => {
+        // Force update any pending response
+        updateResponse("", true);
+        
         setIsGenerating(false);
         if (currentResponse()) {
           setMessages((prev) => [
@@ -219,6 +233,13 @@ export default function Chat(props: ChatProps) {
             },
           ]);
           setCurrentResponse("");
+          
+          // Clear stored response on cancellation
+          try {
+            sessionStorage.removeItem(`chat-response-${instanceId()}`);
+          } catch (e) {
+            console.warn('Failed to clear chat response:', e);
+          }
         }
       })
     );
@@ -230,6 +251,9 @@ export default function Chat(props: ChatProps) {
     );
 
     onCleanup(() => {
+      if (updateTimeout) {
+        window.clearTimeout(updateTimeout);
+      }
       unlisteners.forEach((unlisten) => unlisten());
     });
 
@@ -243,7 +267,77 @@ export default function Chat(props: ChatProps) {
         console.error("Failed to load chat history:", e);
       }
     }
+
+    // Restore previous response if exists
+    try {
+      const savedResponse = sessionStorage.getItem(`chat-response-${instanceId()}`);
+      if (savedResponse) {
+        setCurrentResponse(savedResponse);
+        setTimeout(scrollToBottom, 100); // Scroll after render
+      }
+    } catch (e) {
+      console.warn('Failed to restore chat response:', e);
+    }
   });
+
+  // Track visibility changes
+  createEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+        if (entry.isIntersecting && pendingResponse) {
+          // When becoming visible, immediately apply any pending updates
+          setCurrentResponse(prev => prev + pendingResponse);
+          pendingResponse = "";
+          scrollToBottom();
+        }
+      },
+      { threshold: 0 }
+    );
+
+    const container = document.getElementById(`chat-${instanceId()}`);
+    if (container) {
+      observer.observe(container);
+    }
+
+    onCleanup(() => {
+      observer.disconnect();
+    });
+  });
+
+  // Batch updates when not visible
+  let pendingResponse = "";
+  let updateTimeout: number | null = null;
+
+  const updateResponse = (content: string, force = false) => {
+    pendingResponse += content;
+    
+    if (updateTimeout) {
+      window.clearTimeout(updateTimeout);
+    }
+
+    const applyUpdate = () => {
+      const newResponse = currentResponse() + pendingResponse;
+      setCurrentResponse(newResponse);
+      pendingResponse = "";
+      
+      // Store the current state in sessionStorage
+      try {
+        sessionStorage.setItem(`chat-response-${instanceId()}`, newResponse);
+      } catch (e) {
+        console.warn('Failed to store chat response:', e);
+      }
+      
+      scrollToBottom();
+    };
+
+    if (isVisible() || force) {
+      applyUpdate();
+    } else {
+      // Batch updates when not visible
+      updateTimeout = window.setTimeout(applyUpdate, 100);
+    }
+  };
 
   const toggleMessagePin = async (index: number) => {
     try {
@@ -456,7 +550,10 @@ export default function Chat(props: ChatProps) {
   };
 
   return (
-    <div class="flex flex-col h-full bg-primary dark:bg-primary-dark transition-colors duration-300">
+    <div
+      id={`chat-${instanceId()}`}
+      class="flex flex-col h-full bg-primary dark:bg-primary-dark transition-colors duration-300"
+    >
       {/* Header */}
       <div class="sticky top-0 z-10 flex-none px-4 py-3 border-b border-divider dark:border-divider-dark bg-surface/80 dark:bg-surface-dark/80 backdrop-blur supports-[backdrop-filter]:bg-surface/60 dark:supports-[backdrop-filter]:bg-surface-dark/60 transition-all duration-300">
         <div class="flex items-center justify-between max-w-3xl mx-auto">
