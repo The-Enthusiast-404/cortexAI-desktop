@@ -210,8 +210,8 @@ export default function TabManager() {
   return (
     <div class="flex flex-col h-full">
       {/* Tab Bar */}
-      <div class="flex items-center bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-2">
-        <div class="flex-1 flex items-center overflow-x-auto">
+      <div class="flex items-center bg-gray-100 dark:bg-gray-800 px-2 pt-2">
+        <div class="flex-1 flex items-center space-x-1 overflow-x-auto scrollbar-hide">
           <For each={tabs()}>
             {(tab) => (
               <div
@@ -219,43 +219,60 @@ export default function TabManager() {
                 onDragStart={(e) => handleDragStart(e, tab.id)}
                 onDragOver={(e) => handleDragOver(e, tab.id)}
                 onDragEnd={handleDragEnd}
-                class={`flex items-center px-4 py-2 border-r border-gray-200 dark:border-gray-700 cursor-pointer select-none
+                class={`group relative flex items-center h-9 px-4 cursor-pointer select-none transition-all duration-200 
+                  min-w-[160px] max-w-[200px] rounded-t-lg
                   ${
                     activeTabId() === tab.id
-                      ? "bg-white dark:bg-gray-900 text-blue-600 dark:text-blue-400"
-                      : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                      : "bg-gray-200/80 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 hover:bg-gray-300/80 dark:hover:bg-gray-600/50"
                   }`}
                 onClick={() => setActiveTabId(tab.id)}
                 onDblClick={() => handleTabDoubleClick(tab.id)}
               >
-                <Show
-                  when={editingTabId() === tab.id}
-                  fallback={<span class="truncate max-w-xs">{tab.title}</span>}
-                >
-                  <input
-                    type="text"
-                    value={tab.title}
-                    class="bg-transparent border-none outline-none focus:ring-1 focus:ring-blue-500 rounded px-1"
-                    onBlur={(e) => handleTabTitleChange(tab.id, e)}
-                    onKeyDown={handleTabTitleKeyDown}
-                    autofocus
-                  />
-                </Show>
-                <button
-                  class="ml-2 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(tab.id);
-                  }}
-                >
-                  <X class="w-4 h-4" />
-                </button>
+                <div class="flex-1 flex items-center min-w-0">
+                  <Show
+                    when={editingTabId() === tab.id}
+                    fallback={
+                      <span class="truncate font-medium">
+                        {tab.title}
+                      </span>
+                    }
+                  >
+                    <input
+                      type="text"
+                      value={tab.title}
+                      class="w-full bg-transparent border-none outline-none focus:ring-2 focus:ring-blue-500/20 rounded px-1 font-medium"
+                      onBlur={(e) => handleTabTitleChange(tab.id, e)}
+                      onKeyDown={handleTabTitleKeyDown}
+                      autofocus
+                    />
+                  </Show>
+                  <button
+                    class="ml-2 p-1 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200 
+                      hover:bg-gray-200 dark:hover:bg-gray-700"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(tab.id);
+                    }}
+                  >
+                    <X class="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Blue accent line for active tab */}
+                <div
+                  class={`absolute bottom-0 left-0 right-0 h-[2px] transition-all duration-200 bg-blue-500
+                    ${activeTabId() === tab.id ? "opacity-100" : "opacity-0"}`}
+                />
               </div>
             )}
           </For>
         </div>
+
         <button
-          class="flex items-center justify-center p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full mx-2 text-gray-600 dark:text-gray-400"
+          class="flex items-center justify-center p-2 ml-1 text-gray-600 dark:text-gray-400
+            transition-all duration-200 rounded-full
+            hover:bg-gray-200 dark:hover:bg-gray-700"
           onClick={createNewTab}
           title="New Tab (⌘T)"
         >
@@ -263,15 +280,15 @@ export default function TabManager() {
         </button>
       </div>
 
-      {/* Tab Content */}
-      <div class="flex-1 overflow-hidden">
+      {/* White background that extends under the tabs */}
+      <div class="flex-1 overflow-hidden bg-white dark:bg-gray-900">
         <Show
           when={activeTabId()}
           fallback={
             <div class="h-full flex items-center justify-center text-gray-500 dark:text-gray-400">
-              <div class="text-center">
+              <div class="text-center transform transition-transform hover:scale-105 duration-200">
                 <Plus class="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>Create a new tab to start chatting</p>
+                <p class="text-lg font-medium">Create a new tab to start chatting</p>
               </div>
             </div>
           }
