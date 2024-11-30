@@ -54,7 +54,8 @@ interface ChatMessage {
 interface ChatProps {
   modelName: string;
   chatId?: string | null;
-  onNewChat?: (chatId: string) => void;
+  onNewChat?: (chatId: string, model: string) => void;
+  instanceId?: string;
 }
 
 interface FollowUpSuggestion {
@@ -98,6 +99,8 @@ export default function Chat(props: ChatProps) {
   const [error, setError] = createSignal<string>();
   const [isExporting, setIsExporting] = createSignal(false);
   const [isDark, setIsDark] = createSignal(true);
+  const [instanceId] = createSignal(props.instanceId || crypto.randomUUID());
+  const [isVisible, setIsVisible] = createSignal(true);
 
   const [modelParams, setModelParams] = createSignal<ModelParams>({
     temperature: 0.7,
@@ -111,6 +114,12 @@ export default function Chat(props: ChatProps) {
   const [searchMode, setSearchMode] = createSignal<string>("");
   const [followUps, setFollowUps] = createSignal<FollowUpSuggestion[]>([]);
   const [mode, setMode] = createSignal("offline");
+
+  const [showNewChatDialog, setShowNewChatDialog] = createSignal(false);
+  const [availableModels, setAvailableModels] = createSignal<
+    { name: string }[]
+  >([]);
+  const [selectedModel, setSelectedModel] = createSignal("");
 
   const getCurrentMode = () => {
     return focusModes.find((m) => m.id === mode()) || focusModes[0];
@@ -171,35 +180,164 @@ export default function Chat(props: ChatProps) {
     const unlisteners: UnlistenFn[] = [];
 
     unlisteners.push(
-      await listen<ChatResponse>("chat-response", (event) => {
-        // Accumulate streaming response
-        setCurrentResponse((prev) => prev + event.payload.message.content);
+      await listen<ChatResponse>(`chat-response-${instanceId()}`, (event) => {
+        if (event.payload.message.content) {
+          updateResponse(event.payload.message.content);
+        }
       })
     );
 
-    // Handle completion with follow-ups
     unlisteners.push(
-      await listen<ChatResponse>("chat-complete", (event) => {
-        // Add final message to the list
-        const finalResponse = currentResponse();
-        if (finalResponse.trim()) {
+      await listen<ChatResponse>(`chat-complete-${instanceId()}`, (event) => {
+        const response = event.payload;
+        // Force update any pending response
+        updateResponse("", true);
+        
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: response.message.content,
+            isPinned: false,
+          },
+        ]);
+        setCurrentResponse("");
+        setIsGenerating(false);
+        if (response.follow_ups) {
+          setFollowUps(response.follow_ups);
+        }
+        scrollToBottom();
+        
+        // Clear stored response on completion
+        try {
+          sessionStorage.removeItem(`chat-response-${instanceId()}`);
+        } catch (e) {
+          console.warn('Failed to clear chat response:', e);
+        }
+      })
+    );
+
+    unlisteners.push(
+      await listen(`chat-cancelled-${instanceId()}`, () => {
+        // Force update any pending response
+        updateResponse("", true);
+        
+        setIsGenerating(false);
+        if (currentResponse()) {
           setMessages((prev) => [
             ...prev,
-            { role: "assistant", content: finalResponse },
+            {
+              role: "assistant",
+              content: currentResponse(),
+              isPinned: false,
+            },
           ]);
+          setCurrentResponse("");
+          
+          // Clear stored response on cancellation
+          try {
+            sessionStorage.removeItem(`chat-response-${instanceId()}`);
+          } catch (e) {
+            console.warn('Failed to clear chat response:', e);
+          }
         }
-        setCurrentResponse("");
+      })
+    );
 
-        // Set follow-ups and stop generating
-        setFollowUps(event.payload.follow_ups || []);
-        setIsGenerating(false);
+    unlisteners.push(
+      await listen<any>(`context-update-${instanceId()}`, (event) => {
+        // Handle context updates
       })
     );
 
     onCleanup(() => {
+      if (updateTimeout) {
+        window.clearTimeout(updateTimeout);
+      }
       unlisteners.forEach((unlisten) => unlisten());
     });
+
+    if (props.chatId) {
+      try {
+        const chatMessages = await invoke<ChatMessage[]>("get_chat_messages", {
+          chatId: props.chatId,
+        });
+        setMessages(chatMessages);
+      } catch (e) {
+        console.error("Failed to load chat history:", e);
+      }
+    }
+
+    // Restore previous response if exists
+    try {
+      const savedResponse = sessionStorage.getItem(`chat-response-${instanceId()}`);
+      if (savedResponse) {
+        setCurrentResponse(savedResponse);
+        setTimeout(scrollToBottom, 100); // Scroll after render
+      }
+    } catch (e) {
+      console.warn('Failed to restore chat response:', e);
+    }
   });
+
+  // Track visibility changes
+  createEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+        if (entry.isIntersecting && pendingResponse) {
+          // When becoming visible, immediately apply any pending updates
+          setCurrentResponse(prev => prev + pendingResponse);
+          pendingResponse = "";
+          scrollToBottom();
+        }
+      },
+      { threshold: 0 }
+    );
+
+    const container = document.getElementById(`chat-${instanceId()}`);
+    if (container) {
+      observer.observe(container);
+    }
+
+    onCleanup(() => {
+      observer.disconnect();
+    });
+  });
+
+  // Batch updates when not visible
+  let pendingResponse = "";
+  let updateTimeout: number | null = null;
+
+  const updateResponse = (content: string, force = false) => {
+    pendingResponse += content;
+    
+    if (updateTimeout) {
+      window.clearTimeout(updateTimeout);
+    }
+
+    const applyUpdate = () => {
+      const newResponse = currentResponse() + pendingResponse;
+      setCurrentResponse(newResponse);
+      pendingResponse = "";
+      
+      // Store the current state in sessionStorage
+      try {
+        sessionStorage.setItem(`chat-response-${instanceId()}`, newResponse);
+      } catch (e) {
+        console.warn('Failed to store chat response:', e);
+      }
+      
+      scrollToBottom();
+    };
+
+    if (isVisible() || force) {
+      applyUpdate();
+    } else {
+      // Batch updates when not visible
+      updateTimeout = window.setTimeout(applyUpdate, 100);
+    }
+  };
 
   const toggleMessagePin = async (index: number) => {
     try {
@@ -229,130 +367,36 @@ export default function Chat(props: ChatProps) {
     return messages().filter((msg) => msg.isPinned);
   };
 
-  const sendMessage = async (e?: Event) => {
-    e?.preventDefault();
-    const userInput = currentInput().trim();
+  const sendMessage = async () => {
+    const input = currentInput().trim();
+    if (!input || isGenerating()) return;
 
-    if (!userInput || isGenerating()) return;
+    setCurrentInput("");
+    setIsGenerating(true);
+    setFollowUps([]);
+    setError(undefined);
 
-    let currentChatId = props.chatId;
+    const newMessage: ChatMessage = {
+      role: "user",
+      content: input,
+      isPinned: false,
+    };
+
+    setMessages((prev) => [...prev, newMessage]);
 
     try {
-      const currentMode = getCurrentMode();
-      const systemPrompt = currentMode.systemPrompt;
-
-      console.log("Using system prompt:", {
-        id: currentMode.id,
-        prompt: systemPrompt.substring(0, 100) + "...",
+      await invoke("chat", {
+        model: props.modelName || selectedModel(),
+        messages: [...messages(), newMessage],
+        params: modelParams(),
+        chatId: props.chatId,
+        systemPrompt: getCurrentSystemPrompt(),
+        systemPromptType: getCurrentMode().id,
+        instanceId: instanceId(), // Pass instanceId to backend
       });
-
-      // Create user message with system prompt type
-      const userMessage: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: userInput,
-        isPinned: false,
-        systemPromptType: currentMode.id,
-      };
-
-      // Clear input and set generating state
-      setCurrentInput("");
-      setIsGenerating(true);
-      setError(undefined);
-
-      // Perform web search if enabled
-      const shouldUseWebSearch = isWebSearchEnabled();
-
-      if (shouldUseWebSearch) {
-        console.log("Performing web search for:", userInput);
-        try {
-          const searchResponse = await invoke<SearchResponse>("search", {
-            query: userInput,
-            mode: searchMode(),
-          });
-          console.log("Got search results:", searchResponse);
-
-          // Create a context message from search results
-          const searchContext = searchResponse.results
-            .map((result) => {
-              let citation = `[${result.title}](${result.url})\n${result.snippet}`;
-              // Add academic metadata if available
-              if (result.source_type === "academic") {
-                if (result.authors && result.authors.length > 0) {
-                  citation += `\nAuthors: ${result.authors.join(", ")}`;
-                }
-                if (result.publish_date) {
-                  citation += `\nPublished: ${result.publish_date}`;
-                }
-                if (result.doi) {
-                  citation += `\nDOI: ${result.doi}`;
-                }
-              }
-              return citation;
-            })
-            .join("\n\n");
-
-          // Create a mode-specific prompt
-          const searchPrompt =
-            searchMode() === "academic"
-              ? generateAcademicPrompt({
-                  query: userInput,
-                  searchContext: searchContext,
-                })
-              : `I want you to act as a helpful AI assistant. I will provide you with search results and a query. Your task is to analyze these search results and provide a comprehensive, well-structured response that answers the query. Include relevant citations to the sources.
-
-Query: ${userInput}
-
-Search Results:
-${searchContext}
-
-Please provide a detailed response that:
-1. Summarizes the key information from the search results
-2. Directly answers the query
-3. Includes relevant citations using [Source Title](URL) format
-4. Mentions any limitations or uncertainties in the information
-5. Provides a balanced view of the topic`;
-
-          // Update messages immediately with user's message
-          setMessages((prev) => [...prev, userMessage]);
-
-          // Invoke chat with search context
-          await invoke("chat", {
-            model: props.modelName,
-            messages: [
-              ...messages(),
-              userMessage,
-              {
-                role: "system",
-                content: searchPrompt,
-              },
-            ],
-            params: modelParams(),
-            chatId: currentChatId,
-            systemPrompt: systemPrompt,
-            webSearch: shouldUseWebSearch,
-          });
-        } catch (searchError) {
-          console.error("Search failed:", searchError);
-          setError(`Search failed: ${searchError}`);
-          setIsGenerating(false);
-        }
-      } else {
-        // Regular chat without search
-        setMessages((prev) => [...prev, userMessage]);
-
-        await invoke("chat", {
-          model: props.modelName,
-          messages: [...messages(), userMessage],
-          params: modelParams(),
-          chatId: currentChatId,
-          systemPrompt: systemPrompt,
-          systemPromptType: currentMode.id,
-        });
-      }
-    } catch (error) {
-      console.error("Chat error:", error);
-      setError(`Failed to send message: ${error}`);
+    } catch (e) {
+      console.error("Failed to send message:", e);
+      setError("Failed to send message. Please try again.");
       setIsGenerating(false);
     }
   };
@@ -416,6 +460,67 @@ Please provide a detailed response that:
     }
   };
 
+  const loadModels = async () => {
+    try {
+      const models = await invoke<{ name: string }[]>("list_models");
+      setAvailableModels(models);
+    } catch (e) {
+      setError(`Failed to load models: ${e}`);
+    }
+  };
+
+  const startNewChat = async () => {
+    try {
+      console.log("Creating new chat with model:", selectedModel());
+      const newChat = await invoke<Chat>("create_chat", {
+        title: "New Chat",
+        model: selectedModel(),
+      });
+
+      console.log("Created new chat:", newChat);
+
+      if (!newChat || !newChat.id) {
+        throw new Error("Invalid response from create_chat");
+      }
+
+      if (props.onNewChat) {
+        console.log("Calling onNewChat with:", newChat.id, selectedModel());
+        props.onNewChat(newChat.id, selectedModel());
+      } else {
+        console.warn("onNewChat prop is not provided");
+      }
+
+      setMessages([]);
+      setCurrentResponse("");
+      setError(undefined);
+      setFollowUps([]);
+      setShowNewChatDialog(false);
+    } catch (e) {
+      console.error("Failed to create new chat:", e);
+      setError(`Failed to create new chat: ${e}`);
+      // Keep dialog open on error
+    }
+  };
+
+  // Load models when dialog opens
+  createEffect(() => {
+    if (showNewChatDialog()) {
+      loadModels().then(() => {
+        // Only set initial model if none is selected
+        if (!selectedModel() && availableModels().length > 0) {
+          setSelectedModel(availableModels()[0].name);
+        }
+      });
+    }
+  });
+
+  // Reset selected model when dialog closes
+  createEffect(() => {
+    if (!showNewChatDialog()) {
+      setSelectedModel(props.modelName);
+    }
+  });
+
   // Fixed dark mode effect
   createEffect(() => {
     if (isDark()) {
@@ -436,8 +541,19 @@ Please provide a detailed response that:
     }
   });
 
+  const handleCancelGeneration = async () => {
+    try {
+      await invoke("cancel_chat_generation");
+    } catch (e) {
+      setError(`Failed to cancel generation: ${e}`);
+    }
+  };
+
   return (
-    <div class="flex flex-col h-full bg-primary dark:bg-primary-dark transition-colors duration-300">
+    <div
+      id={`chat-${instanceId()}`}
+      class="flex flex-col h-full bg-primary dark:bg-primary-dark transition-colors duration-300"
+    >
       {/* Header */}
       <div class="sticky top-0 z-10 flex-none px-4 py-3 border-b border-divider dark:border-divider-dark bg-surface/80 dark:bg-surface-dark/80 backdrop-blur supports-[backdrop-filter]:bg-surface/60 dark:supports-[backdrop-filter]:bg-surface-dark/60 transition-all duration-300">
         <div class="flex items-center justify-between max-w-3xl mx-auto">
@@ -448,6 +564,13 @@ Please provide a detailed response that:
             </h2>
           </div>
           <div class="flex items-center gap-2">
+            <Button.Root
+              onClick={() => setShowNewChatDialog(true)}
+              class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <MessageSquare class="w-4 h-4 mr-2" />
+              New Chat
+            </Button.Root>
             <Button.Root
               onClick={() => setIsDark(!isDark())}
               class="p-2 text-text-secondary dark:text-text-secondary-dark hover:bg-hover dark:hover:bg-hover-dark rounded-full transition-all duration-300"
@@ -474,8 +597,8 @@ Please provide a detailed response that:
                 </Button.Root>
               </Show>
               <Button.Root
-                class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
                 onClick={() => setShowSettings(!showSettings())}
+                class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
               >
                 <Settings class="h-4 w-4 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white" />
               </Button.Root>
@@ -591,7 +714,8 @@ Please provide a detailed response that:
             )}
           </For>
 
-          <Show when={currentResponse()}>
+          {/* Show current response in message style */}
+          {currentResponse() && (
             <div class="py-8 border-b border-divider dark:border-divider-dark transition-colors duration-300 animate-messageIn">
               <div class="flex gap-6 items-start">
                 <div class="flex-none p-3 rounded-xl shadow-sm bg-assistant dark:bg-assistant-dark transition-colors duration-300">
@@ -607,7 +731,7 @@ Please provide a detailed response that:
                 </div>
               </div>
             </div>
-          </Show>
+          )}
 
           {/* Show follow-ups after response is complete */}
           <Show
@@ -637,7 +761,10 @@ Please provide a detailed response that:
 
       {/* Input Form */}
       <div class="flex-none border-t border-divider dark:border-divider-dark bg-surface/80 dark:bg-surface-dark/80 backdrop-blur supports-[backdrop-filter]:bg-surface/60 dark:supports-[backdrop-filter]:bg-surface-dark/60 transition-all duration-300">
-        <form onSubmit={sendMessage} class="max-w-3xl mx-auto p-4">
+        <form
+          onSubmit={(e) => e.preventDefault()}
+          class="max-w-3xl mx-auto p-4"
+        >
           <div class="relative flex items-center gap-2 min-h-[48px]">
             <div class="flex-none z-[1]">
               <FocusMode
@@ -669,15 +796,25 @@ Please provide a detailed response that:
               class="chat-input flex-1 min-h-[48px] px-4 py-3 bg-input dark:bg-input-dark rounded-xl border border-divider dark:border-divider-dark focus:outline-none focus:ring-2 focus:ring-accent dark:focus:ring-accent-dark z-[2] text-text dark:text-text-dark !text-base !font-normal transition-all duration-300"
             />
             <Button.Root
-              type="submit"
-              disabled={isGenerating()}
+              type="button"
+              onClick={isGenerating() ? handleCancelGeneration : sendMessage}
+              disabled={!currentInput().trim() && !isGenerating()}
               class="flex-none p-2 text-gray-400 dark:text-gray-300 hover:text-gray-600 dark:hover:text-white
                      disabled:opacity-50 disabled:hover:text-gray-400 dark:disabled:hover:text-gray-300
                      transition-colors rounded-lg z-[1]"
             >
               <Show
                 when={!isGenerating()}
-                fallback={<Loader class="w-5 h-5 animate-spin" />}
+                fallback={
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <rect x="5" y="5" width="10" height="10" />
+                  </svg>
+                }
               >
                 <Send class="w-5 h-5" />
               </Show>
@@ -692,6 +829,51 @@ Please provide a detailed response that:
           </Show>
         </form>
       </div>
+
+      {/* New Chat Dialog */}
+      <Show when={showNewChatDialog()}>
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-xl w-96">
+            <h2 class="text-lg font-semibold mb-4">Start New Chat</h2>
+            <div class="mb-4">
+              <label class="block text-sm font-medium mb-2">Select Model</label>
+              <select
+                value={selectedModel()}
+                onChange={(e) => {
+                  console.log("Selected model:", e.currentTarget.value);
+                  setSelectedModel(e.currentTarget.value);
+                }}
+                class="w-full p-2 border rounded-md dark:bg-gray-700 dark:border-gray-600"
+              >
+                <For each={availableModels()}>
+                  {(model) => (
+                    <option
+                      value={model.name}
+                      selected={model.name === selectedModel()}
+                    >
+                      {model.name}
+                    </option>
+                  )}
+                </For>
+              </select>
+            </div>
+            <div class="flex justify-end space-x-2">
+              <Button.Root
+                onClick={() => setShowNewChatDialog(false)}
+                class="px-4 py-2 text-sm font-medium rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </Button.Root>
+              <Button.Root
+                onClick={startNewChat}
+                class="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Create
+              </Button.Root>
+            </div>
+          </div>
+        </div>
+      </Show>
     </div>
   );
 }

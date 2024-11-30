@@ -1,10 +1,10 @@
-mod chat;
+pub mod chat;
 mod database;
 mod ollama;
 mod search;
 
 use crate::database::Database;
-use crate::ollama::{list_models, pull_model};
+use crate::ollama::{list_models, pull_model, get_model_details};
 use crate::search::search;
 use once_cell::sync::Lazy;
 use std::path::PathBuf;
@@ -46,20 +46,23 @@ pub fn run() {
             initialize_database(&app.handle())?;
             Ok(())
         })
+        .manage(chat::ChatState::new())
         .invoke_handler(tauri::generate_handler![
             list_models,
             pull_model,
+            search,
             chat::chat,
+            chat::cancel_chat_generation,
+            chat::get_context_stats,
+            chat::save_message,
+            chat::toggle_message_pin,
             chat::get_chat_messages,
             chat::get_chats,
             chat::create_chat,
             chat::delete_chat,
-            chat::save_message,
-            chat::toggle_message_pin,
-            chat::get_context_stats,
             chat::export_chat,
             chat::import_chat,
-            search,
+            get_model_details,
         ])
         .plugin(tauri_plugin_dialog::init()) // Dialog plugin for file dialogs
         .plugin(tauri_plugin_fs::init()) // File system plugin
@@ -67,3 +70,5 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+pub use chat::cancel_chat_generation;
