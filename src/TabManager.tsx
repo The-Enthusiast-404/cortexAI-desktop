@@ -293,20 +293,25 @@ export default function TabManager() {
             </div>
           }
         >
-          <For each={tabs()}>
-            {(tab) => (
-              <Show when={tab.id === activeTabId()}>
-                <Chat
-                  modelName={tab.modelName}
-                  chatId={tab.chatId}
-                  instanceId={tab.instanceId}
-                  onNewChat={(chatId, model) =>
-                    handleNewChat(chatId, model, tab.id)
-                  }
-                />
-              </Show>
-            )}
-          </For>
+          {/* Use keyed instances to preserve component state */}
+          <div class="h-full">
+            <For each={tabs()}>
+              {(tab) => (
+                <Show when={tab.id === activeTabId()}>
+                  <div class="h-full" key={tab.instanceId}>
+                    <Chat
+                      modelName={tab.modelName}
+                      chatId={tab.chatId}
+                      instanceId={tab.instanceId}
+                      onNewChat={(chatId, model) =>
+                        handleNewChat(chatId, model, tab.id)
+                      }
+                    />
+                  </div>
+                </Show>
+              )}
+            </For>
+          </div>
         </Show>
       </div>
     </div>

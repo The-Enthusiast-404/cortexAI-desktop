@@ -250,9 +250,36 @@ export default function Chat(props: ChatProps) {
       })
     );
 
+    // Restore isGenerating state if exists
+    try {
+      const wasGenerating = sessionStorage.getItem(`chat-is-generating-${instanceId()}`);
+      if (wasGenerating === "true") {
+        setIsGenerating(true);
+      }
+    } catch (e) {
+      console.warn('Failed to restore generating state:', e);
+    }
+
+    // Restore previous response if exists
+    try {
+      const savedResponse = sessionStorage.getItem(`chat-response-${instanceId()}`);
+      if (savedResponse) {
+        setCurrentResponse(savedResponse);
+        setTimeout(scrollToBottom, 100); // Scroll after render
+      }
+    } catch (e) {
+      console.warn('Failed to restore chat response:', e);
+    }
+
     onCleanup(() => {
       if (updateTimeout) {
         window.clearTimeout(updateTimeout);
+      }
+      // Clean up isGenerating state when component unmounts
+      try {
+        sessionStorage.removeItem(`chat-is-generating-${instanceId()}`);
+      } catch (e) {
+        console.warn('Failed to clean up generating state:', e);
       }
       unlisteners.forEach((unlisten) => unlisten());
     });
@@ -268,16 +295,14 @@ export default function Chat(props: ChatProps) {
       }
     }
 
-    // Restore previous response if exists
-    try {
-      const savedResponse = sessionStorage.getItem(`chat-response-${instanceId()}`);
-      if (savedResponse) {
-        setCurrentResponse(savedResponse);
-        setTimeout(scrollToBottom, 100); // Scroll after render
+    // Track isGenerating state in sessionStorage
+    createEffect(() => {
+      if (isGenerating()) {
+        sessionStorage.setItem(`chat-is-generating-${instanceId()}`, "true");
+      } else {
+        sessionStorage.removeItem(`chat-is-generating-${instanceId()}`);
       }
-    } catch (e) {
-      console.warn('Failed to restore chat response:', e);
-    }
+    });
   });
 
   // Track visibility changes
