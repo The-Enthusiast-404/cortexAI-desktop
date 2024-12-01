@@ -266,11 +266,15 @@ fn parse_semantic_scholar_results(response: SemanticScholarResponse) -> Vec<Sear
 }
 
 pub async fn search_web(query: &str, mode: &str) -> Result<SearchResponse, Box<dyn Error>> {
-    println!("Searching for query: {} in mode: {}", query, mode);
+    println!("Searching with mode: {}", mode);
     
     let results = match mode {
-        "academic" => search_academic(query).await?,
+        "academic" => {
+            println!("Using academic search");
+            search_academic(query).await?
+        }
         _ => {
+            println!("Using regular search");
             let client = Client::new();
             let url = format!(
                 "https://html.duckduckgo.com/html/?q={}",

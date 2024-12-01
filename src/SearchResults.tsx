@@ -17,9 +17,13 @@ interface SearchResultsProps {
 }
 
 const SearchResults: Component<SearchResultsProps> = (props) => {
+  console.log("Rendering search results:", props.results);
+
   return (
     <div class="space-y-4">
-      <h3 class="text-lg font-semibold">Web Search Results</h3>
+      <h3 class="text-lg font-semibold">
+        {props.results[0]?.source_type === "academic" ? "Academic Search Results" : "Web Search Results"}
+      </h3>
       <For each={props.results}>
         {(result) => (
           <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">

@@ -396,6 +396,7 @@ export default function Chat(props: ChatProps) {
     const input = currentInput().trim();
     if (!input || isGenerating()) return;
 
+    console.log("Sending message with mode:", mode());  
     setCurrentInput("");
     setIsGenerating(true);
     setFollowUps([]);
@@ -405,6 +406,7 @@ export default function Chat(props: ChatProps) {
       role: "user",
       content: input,
       isPinned: false,
+      systemPromptType: mode()  
     };
 
     setMessages((prev) => [...prev, newMessage]);
