@@ -34,6 +34,7 @@ import FollowUpSuggestions from "./FollowUpSuggestions";
 import { generateAcademicPrompt } from "./AcademicPrompts";
 import FocusMode from "./FocusMode";
 import { focusModes } from "./FocusModeConfig";
+import { searchAcademic } from "./services/academicSearch";
 
 interface Chat {
   id: string;
@@ -192,7 +193,7 @@ export default function Chat(props: ChatProps) {
         const response = event.payload;
         // Force update any pending response
         updateResponse("", true);
-        
+
         setMessages((prev) => [
           ...prev,
           {
@@ -207,12 +208,12 @@ export default function Chat(props: ChatProps) {
           setFollowUps(response.follow_ups);
         }
         scrollToBottom();
-        
+
         // Clear stored response on completion
         try {
           sessionStorage.removeItem(`chat-response-${instanceId()}`);
         } catch (e) {
-          console.warn('Failed to clear chat response:', e);
+          console.warn("Failed to clear chat response:", e);
         }
       })
     );
@@ -221,7 +222,7 @@ export default function Chat(props: ChatProps) {
       await listen(`chat-cancelled-${instanceId()}`, () => {
         // Force update any pending response
         updateResponse("", true);
-        
+
         setIsGenerating(false);
         if (currentResponse()) {
           setMessages((prev) => [
@@ -233,12 +234,12 @@ export default function Chat(props: ChatProps) {
             },
           ]);
           setCurrentResponse("");
-          
+
           // Clear stored response on cancellation
           try {
             sessionStorage.removeItem(`chat-response-${instanceId()}`);
           } catch (e) {
-            console.warn('Failed to clear chat response:', e);
+            console.warn("Failed to clear chat response:", e);
           }
         }
       })
@@ -252,23 +253,27 @@ export default function Chat(props: ChatProps) {
 
     // Restore isGenerating state if exists
     try {
-      const wasGenerating = sessionStorage.getItem(`chat-is-generating-${instanceId()}`);
+      const wasGenerating = sessionStorage.getItem(
+        `chat-is-generating-${instanceId()}`
+      );
       if (wasGenerating === "true") {
         setIsGenerating(true);
       }
     } catch (e) {
-      console.warn('Failed to restore generating state:', e);
+      console.warn("Failed to restore generating state:", e);
     }
 
     // Restore previous response if exists
     try {
-      const savedResponse = sessionStorage.getItem(`chat-response-${instanceId()}`);
+      const savedResponse = sessionStorage.getItem(
+        `chat-response-${instanceId()}`
+      );
       if (savedResponse) {
         setCurrentResponse(savedResponse);
         setTimeout(scrollToBottom, 100); // Scroll after render
       }
     } catch (e) {
-      console.warn('Failed to restore chat response:', e);
+      console.warn("Failed to restore chat response:", e);
     }
 
     onCleanup(() => {
@@ -279,7 +284,7 @@ export default function Chat(props: ChatProps) {
       try {
         sessionStorage.removeItem(`chat-is-generating-${instanceId()}`);
       } catch (e) {
-        console.warn('Failed to clean up generating state:', e);
+        console.warn("Failed to clean up generating state:", e);
       }
       unlisteners.forEach((unlisten) => unlisten());
     });
@@ -312,7 +317,7 @@ export default function Chat(props: ChatProps) {
         setIsVisible(entry.isIntersecting);
         if (entry.isIntersecting && pendingResponse) {
           // When becoming visible, immediately apply any pending updates
-          setCurrentResponse(prev => prev + pendingResponse);
+          setCurrentResponse((prev) => prev + pendingResponse);
           pendingResponse = "";
           scrollToBottom();
         }
@@ -336,7 +341,7 @@ export default function Chat(props: ChatProps) {
 
   const updateResponse = (content: string, force = false) => {
     pendingResponse += content;
-    
+
     if (updateTimeout) {
       window.clearTimeout(updateTimeout);
     }
@@ -345,14 +350,14 @@ export default function Chat(props: ChatProps) {
       const newResponse = currentResponse() + pendingResponse;
       setCurrentResponse(newResponse);
       pendingResponse = "";
-      
+
       // Store the current state in sessionStorage
       try {
         sessionStorage.setItem(`chat-response-${instanceId()}`, newResponse);
       } catch (e) {
-        console.warn('Failed to store chat response:', e);
+        console.warn("Failed to store chat response:", e);
       }
-      
+
       scrollToBottom();
     };
 
@@ -396,7 +401,7 @@ export default function Chat(props: ChatProps) {
     const input = currentInput().trim();
     if (!input || isGenerating()) return;
 
-    console.log("Sending message with mode:", mode());  
+    console.log("Sending message with mode:", mode());
     setCurrentInput("");
     setIsGenerating(true);
     setFollowUps([]);
@@ -406,7 +411,7 @@ export default function Chat(props: ChatProps) {
       role: "user",
       content: input,
       isPinned: false,
-      systemPromptType: mode()  
+      systemPromptType: mode(),
     };
 
     setMessages((prev) => [...prev, newMessage]);
@@ -574,6 +579,93 @@ export default function Chat(props: ChatProps) {
     } catch (e) {
       setError(`Failed to cancel generation: ${e}`);
     }
+  };
+
+  const handleSearch = async (query: string) => {
+    const [isSearching, setIsSearching] = createSignal(false);
+
+    try {
+      setIsSearching(true);
+      setError(undefined);
+
+      const mode = getCurrentMode();
+      const useAcademicSearch = mode.capabilities.academicSearch;
+
+      let results: SearchResult[] = [];
+      if (useAcademicSearch) {
+        results = await searchAcademic(query);
+      } else {
+        // Handle regular web search
+        const searchResponse = await invoke<SearchResponse>("search", {
+          query,
+          useAcademic: false,
+          chatId: props.chatId,
+        });
+        results = searchResponse.results;
+      }
+
+      setSearchResults(results);
+
+      // Generate appropriate system prompt based on search results
+      const systemPrompt = useAcademicSearch
+        ? generateAcademicPrompt({
+            query,
+            searchContext: formatSearchResults(results),
+          })
+        : getCurrentSystemPrompt();
+
+      // Send message with search results context
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "user",
+          content: query,
+          isPinned: false,
+          systemPromptType: getCurrentMode().id,
+        },
+      ]);
+
+      try {
+        await invoke("chat", {
+          model: props.modelName || selectedModel(),
+          messages: messages(),
+          params: modelParams(),
+          chatId: props.chatId,
+          systemPrompt,
+          systemPromptType: getCurrentMode().id,
+          instanceId: instanceId(),
+        });
+      } catch (e) {
+        console.error("Failed to send message:", e);
+        setError("Failed to send message. Please try again.");
+        setIsGenerating(false);
+      }
+    } catch (error) {
+      console.error("Search failed:", error);
+      setError(`Search failed: ${error}`);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const formatSearchResults = (results: SearchResult[]): string => {
+    return results
+      .map((result) => {
+        let citation = `Title: ${result.title}\n`;
+        if (result.authors) {
+          citation += `Authors: ${result.authors.join(", ")}\n`;
+        }
+        if (result.publish_date) {
+          citation += `Published: ${result.publish_date}\n`;
+        }
+        if (result.doi) {
+          citation += `DOI: ${result.doi}\n`;
+        }
+        citation += `URL: ${result.url}\n`;
+        citation += `Excerpt: ${result.snippet}\n`;
+        return citation;
+      })
+      .join("\n---\n");
   };
 
   return (

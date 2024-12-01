@@ -17,12 +17,12 @@ interface SearchResultsProps {
 }
 
 const SearchResults: Component<SearchResultsProps> = (props) => {
-  console.log("Rendering search results:", props.results);
+  const isAcademic = () => props.results[0]?.source_type === "academic";
 
   return (
     <div class="space-y-4">
       <h3 class="text-lg font-semibold">
-        {props.results[0]?.source_type === "academic" ? "Academic Search Results" : "Web Search Results"}
+        {isAcademic() ? "Academic Search Results" : "Web Search Results"}
       </h3>
       <For each={props.results}>
         {(result) => (
@@ -38,16 +38,22 @@ const SearchResults: Component<SearchResultsProps> = (props) => {
               </a>
 
               <Show when={result.source_type === "academic"}>
-                <div class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                <div class="text-sm text-gray-600 dark:text-gray-400 mt-1 space-y-1">
                   <Show when={result.authors && result.authors.length > 0}>
-                    <div>Authors: {result.authors?.join(", ")}</div>
+                    <div class="flex gap-1">
+                      <span class="font-medium">Authors:</span>
+                      <span>{result.authors?.join(", ")}</span>
+                    </div>
                   </Show>
                   <Show when={result.publish_date}>
-                    <div>Published: {result.publish_date}</div>
+                    <div class="flex gap-1">
+                      <span class="font-medium">Published:</span>
+                      <span>{result.publish_date}</span>
+                    </div>
                   </Show>
                   <Show when={result.doi}>
-                    <div>
-                      DOI:{" "}
+                    <div class="flex gap-1">
+                      <span class="font-medium">DOI:</span>
                       <a
                         href={`https://doi.org/${result.doi}`}
                         target="_blank"
@@ -61,14 +67,9 @@ const SearchResults: Component<SearchResultsProps> = (props) => {
                 </div>
               </Show>
             </div>
-
-            <p class="text-gray-600 dark:text-gray-400 text-sm">
+            <p class="text-gray-700 dark:text-gray-300 text-sm">
               {result.snippet}
             </p>
-
-            <div class="mt-2 text-xs text-gray-500 dark:text-gray-500">
-              Source: {new URL(result.url).hostname}
-            </div>
           </div>
         )}
       </For>
