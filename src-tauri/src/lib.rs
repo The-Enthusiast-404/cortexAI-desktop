@@ -1,11 +1,11 @@
 pub mod chat;
 mod database;
 mod ollama;
-mod search;
+
 
 use crate::database::Database;
 use crate::ollama::{list_models, pull_model, get_model_details};
-use crate::search::search;
+
 use once_cell::sync::Lazy;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -50,7 +50,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_models,
             pull_model,
-            search,
             chat::chat,
             chat::cancel_chat_generation,
             chat::get_context_stats,
